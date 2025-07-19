@@ -6,7 +6,7 @@ This firmware interfaces with five Varadis VT01 RADFET sensors via an I2C-contro
 
 ---
 
-## ✨ Features
+## Features
 
 - Polls 5x RADFET dosimeters using external ADCs
 - I2C expander (TCA9539) used for sensor bias enable/disable
