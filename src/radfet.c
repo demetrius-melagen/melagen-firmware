@@ -264,7 +264,7 @@ static void * radfet_poll_task(void * param)
         }
         // Write sample to FRAM with circular buffer behavior
         if (fram) {
-            if (fram_write_offset + sizeof(pkt.sample) > fram->size) {
+            if (fram_write_offset + PKT_SIZE > fram->size) {
                 log_info("FRAM offset exceeded — wrapping to beginning");
                 fram_write_offset = 0;
             }
