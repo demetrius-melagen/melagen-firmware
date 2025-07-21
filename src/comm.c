@@ -39,62 +39,67 @@ static void * task_ground_comm(void * param) {
             //listens for incoming request packets, custom command
             // 
             // implement deferred interrupt handling, where an interrupt will signal this task to go through
+            // for (int i = 0; i < 5; i++){ 
+                // log_info("UART Status of Device %i: %u",i, (unsigned int)gs_uart_status(i));
+            // }
+            // uint8_t incoming_byte;
+            // gs_error_t res = gs_uart_read(4, 1000, &incoming_byte);  // Wait up to 1000 ms
 
-            //  calculate amount of samples based on current buffer position (fram_offset) / sample packet size
-            //      this way it doesnt read empty memory 
-            // int observations = fram_write_offset / PKT_SIZE;
-            // log_info("Amount of samples = %i",observations);
-            radfet_packet_t pkt;
+            // if (res == GS_OK) {
+                // log_info("Received byte on UART4: 0x%02X (%c)", incoming_byte, incoming_byte);
+
+                radfet_packet_t pkt;
+                
+                //  for all samples
+                while (fram_read_offset != fram_write_offset) {
+                    // Handle wraparound if packet would exceed FRAM end
+                    if (fram_read_offset + PKT_SIZE > fram->size) {
+                        log_info("Partial packet at end — wrapping to 0");
+                        fram_read_offset = 0;
+                        continue;
+                    }
+                    // Log all samples
+                    gs_vmem_cpy(&pkt, fram->virtmem.p + fram_read_offset, sizeof(pkt));
+                    uint16_t expected = crc16_ccitt(&pkt, sizeof(pkt) - sizeof(pkt.crc16));
+                    if (expected != pkt.crc16) {
+                        log_error("CRC mismatch: expected 0x%04X, got 0x%04X", expected, pkt.crc16);
+                    } else {
+                        log_info("Correct packet CRC")
+                    }
+                    log_info("Sample @ offset %u",  (unsigned int)fram_read_offset);
+                    log_info("  Timestamp: %u", (unsigned int)pkt.sample.timestamp);
+                    for (int i = 0; i < NUM_RADFET; i++) {
+                        log_info("  D%i R1 = %d mV, R2 = %d mV", i + 1, pkt.sample.adc[i][0], pkt.sample.adc[i][1]);
+                    }
+                    // create packet for transmission including
+                        // payload sample packet of size 
+                        // (timestamp size 4 bytes) + (number of sensors * number of radfets per sensor * 2 bytes) 
+                        // header, command id, length, payload, checksum
+                    // send out packet through rs-232 -> rs422 
+                    // iterate read address pointer based on sample packet size
+                    fram_read_offset += PKT_SIZE;
+                    if (fram_read_offset >= fram->size) {
+                        fram_read_offset = 0;
+                        log_info("Read offset wrapped to 0");
+                    }
+                }
+                //after transmission
+                // clear FRAM
+                if (fram) {
+                    gs_vmem_lock_by_name(fram->name, false);
+                    uint8_t wtmp[128];
+                    memset(wtmp, 0, sizeof(wtmp));
+                    for (unsigned int i = 0; i < fram->size; i += sizeof(wtmp)) {
+                        gs_vmem_cpy(fram->virtmem.p + i, &wtmp, sizeof(wtmp));
+                    }
+                    log_info("All FRAM set to zero (cleared)");
+                }
             
-            //  for all samples
-            while (fram_read_offset != fram_write_offset) {
-                // Handle wraparound if packet would exceed FRAM end
-                if (fram_read_offset + PKT_SIZE > fram->size) {
-                    log_info("Partial packet at end — wrapping to 0");
-                    fram_read_offset = 0;
-                    continue;
-                }
-                // Log all samples
-                gs_vmem_cpy(&pkt, fram->virtmem.p + fram_read_offset, sizeof(pkt));
-                uint16_t expected = crc16_ccitt(&pkt, sizeof(pkt) - sizeof(pkt.crc16));
-                if (expected != pkt.crc16) {
-                    log_error("CRC mismatch: expected 0x%04X, got 0x%04X", expected, pkt.crc16);
-                } else {
-                    log_info("Correct packet CRC")
-                }
-                log_info("Sample @ offset %u",  (unsigned int)fram_read_offset);
-                log_info("  Timestamp: %u", (unsigned int)pkt.sample.timestamp);
-    
-                for (int i = 0; i < NUM_RADFET; i++) {
-                    log_info("  D%i R1 = %d mV, R2 = %d mV", i + 1, pkt.sample.adc_mv[i][0], pkt.sample.adc_mv[i][1]);
-                }
-                // create packet for transmission including
-                    // payload sample packet of size 
-                    // (timestamp size 4 bytes) + (number of sensors * number of radfets per sensor * 2 bytes) 
-                    // header, command id, length, payload, checksum
-                // send out packet through rs-232 -> rs422 
-                // 
-                // iterate read address pointer based on sample packet size
-                fram_read_offset += PKT_SIZE;
-                if (fram_read_offset >= fram->size) {
-                    fram_read_offset = 0;
-                    log_info("Read offset wrapped to 0");
-                }
-            }
-            //after transmission
-            // clear FRAM
-            if (fram) {
-                gs_vmem_lock_by_name(fram->name, false);
-                uint8_t wtmp[128];
-                memset(wtmp, 0, sizeof(wtmp));
-                for (unsigned int i = 0; i < fram->size; i += sizeof(wtmp)) {
-                    gs_vmem_cpy(fram->virtmem.p + i, &wtmp, sizeof(wtmp));
-                }
-                log_info("All FRAM set to zero (cleared)");
-            }
-            // log_info("UART Status of Device 4: %u", (unsigned int)gs_uart_status(4));
-
-
+            // } else if (res == GS_ERROR_TIMEOUT) {
+            //     log_info("UART4 read timeout");
+            // } else {
+            //     log_error("UART4 read failed with error: %d", res);
+            // }
             // // reset fram_offset used in radfet.c
             // // only reset if at end of buffer
             // fram_write_offset = 0;
@@ -124,7 +129,7 @@ void comm_task_init(void) {
     
     gs_uart_config_t uart_conf;
     gs_uart_get_default_config(&uart_conf);
-
+    uart_conf.comm.bps = 57600;
     log_info("Default UART config:");
     log_info("  Baudrate:     %"PRIu32, uart_conf.comm.bps);
     log_info("  Data bits:    %u", (unsigned int)uart_conf.comm.data_bits);

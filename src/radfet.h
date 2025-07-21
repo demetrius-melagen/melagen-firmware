@@ -6,14 +6,14 @@
 #define NUM_RADFET 1
 #define RADFET_PER_MODULE 2
 #define PKT_SIZE sizeof(radfet_packet_t)
-//address to write data to 
+
 extern uint32_t fram_write_offset;
 // Sample interval (ms) — adjust as needed
 extern uint32_t sample_rate_ms;  
 
 typedef struct __attribute__((packed)) {
     uint32_t timestamp;   // 4 bytes
-    int16_t adc_mv[NUM_RADFET][RADFET_PER_MODULE];  // 20 bytes
+    int16_t adc[NUM_RADFET][RADFET_PER_MODULE];  // 20 bytes
 } radfet_sample_t; // Total: 24 bytes
 
 typedef struct __attribute__((packed)) {
