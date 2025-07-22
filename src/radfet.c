@@ -226,9 +226,9 @@ uint32_t sample_rate_ms = 60000;  // 60 seconds
 static void * radfet_poll_task(void * param)
 {
     radfet_packet_t pkt;
-    pkt.sync[0] = 0xAA;
-    pkt.sync[1] = 0x55;
-    pkt.cmd_id  = 0x01;
+    // pkt.sync[0] = 0xAA;
+    // pkt.sync[1] = 0x55;
+    // pkt.cmd_id  = 0x01;
 
     // int16_t sensor_mv[NUM_RADFET][RADFET_PER_MODULE]; // index [sensor][R1/R2]
     for (;;) {
