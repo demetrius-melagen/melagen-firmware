@@ -17,9 +17,9 @@ typedef struct __attribute__((packed)) {
 } radfet_sample_t; // Total: 24 bytes
 
 typedef struct __attribute__((packed)) {
-    uint8_t  sync[2];        // 0xAA 0x55 2 bytes
-    uint8_t  cmd_id;         // 1 byte
-    uint16_t length;         // 2 bytes (24 for the sample)
+    // uint8_t  sync[2];        // 0xAA 0x55 2 bytes
+    // uint8_t  cmd_id;         // 1 byte
+    // uint16_t length;         // 2 bytes (24 for the sample)
     radfet_sample_t sample;  // 24 bytes (timestamp + adc_mv)
     uint16_t crc16;          // 2 bytes, CRC over all prior bytes
 } radfet_packet_t;
