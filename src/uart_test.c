@@ -47,9 +47,9 @@ static void * task_uart_test(void * param)
         // } else {
         //     log_error("UART1 read failed with error: %d", err);
         // }
-        gs_uart_write(1, 1000, 'A');
+        gs_uart_write(1, 10000, 'A');
         // log_info("Writing A to UART");
-
+        gs_time_sleep_ms(10000);
     }
     // Will never get here
     gs_thread_exit(NULL);
@@ -70,7 +70,10 @@ void uart_test_init(void)
     // log_info("  Flow control: %u", (unsigned int)uart_conf.comm.flow_control);    
     // log_info("  TX queue size: %u", (unsigned int)uart_conf.tx_queue_size);
     // log_info("  RX queue size: %u", (unsigned int)uart_conf.rx_queue_size);
-    gs_a3200_uart_init(1, true, 57600);
+    gs_error_t err = gs_a3200_uart_init(1, true, 57600);
+    if (err != GS_OK) {
+        log_error("UART1 initialization failed: %s (code: %d)", gs_error_string(err), err);
+    }
     gs_thread_create("UART Test", task_uart_test, NULL,
                      gs_a3200_get_default_stack_size(),
                      GS_THREAD_PRIORITY_LOW, 0, NULL);
