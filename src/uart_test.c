@@ -28,7 +28,7 @@ static void * task_uart_test(void * param)
         wdt_clear();
         // log_info("Status of UART Device 4", gs_uart_status(4));
         uint8_t incoming_byte;
-        gs_error_t err = gs_uart_read(4, 1000, incoming_byte);  
+        gs_error_t err = gs_uart_read(4, 10000, &incoming_byte);  
         if (err == GS_OK) {
             log_info("Received byte on UART4: 0x%02X (%c)", incoming_byte, incoming_byte);
             // if received byte is STX
