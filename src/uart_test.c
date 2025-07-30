@@ -12,10 +12,10 @@
 #include <inttypes.h>
 #include <string.h>  // for memset
 #include "radfet.h"
-#include <gs/embed/asf/drivers/uart/uart.h>
 #include <gs/util/clock.h>
 #include <gs/util/rtc.h>
 #include <gs/embed/drivers/uart/uart.h>
+#include <gs/a3200/uart.h>
 #include <gs/csp/csp.h>
 #include <gs/csp/drivers/kiss/kiss.h>
 #include <gs/a3200/uart.h>
@@ -28,15 +28,20 @@ static void * task_uart_test(void * param)
         wdt_clear();
         // log_info("Status of UART Device 4", gs_uart_status(4));
         uint8_t incoming_byte;
-        gs_error_t err = gs_uart_read(4, 10000, &incoming_byte);  
+        gs_error_t err = gs_uart_read(4, 0, &incoming_byte);  
         if (err == GS_OK) {
             log_info("Received byte on UART4: 0x%02X (%c)", incoming_byte, incoming_byte);
+
+            // state machine with switch case
             // if received byte is STX
                 // tunnel is open
+
                 // send X days worth of data 
             // if received byte is ETX
                 // tunnel is closed
             // if received byte is (safe mode)
+                // put radfet data collection task to sleep
+                // 
         } else if (err == GS_ERROR_TIMEOUT) {
             // log_info("UART4 read timeout");
         } else {
