@@ -41,6 +41,7 @@ static void * task_uart_test(void * param)
                 case STX:
                 // tunnel is open
                 // send X days worth of data 
+                // 10 second timeout
                 break;
                 case ETX:
                 // if received byte is ETX
