@@ -43,7 +43,7 @@ static void * task_uart_test(void * param)
             log_error("UART4 read failed with error: %d", res);
         }
 
-        gs_uart_write(4, 10000, 'A');
+        // gs_uart_write(4, 10000, 'A');
         // log_info("Writing A to UART");
     }
     // Will never get here
@@ -53,10 +53,10 @@ static void * task_uart_test(void * param)
 void uart_test_init(void)
 {
     
-    gs_uart_config_t uart_conf;
-    gs_uart_get_default_config(&uart_conf);
-    uart_conf.comm.bps = 57600;
-    gs_uart_init(4, &uart_conf);
+    // gs_uart_config_t uart_conf;
+    // gs_uart_get_default_config(&uart_conf);
+    // uart_conf.comm.bps = 57600;
+    // gs_uart_init(4, &uart_conf);
     // gs_uart_change_comm(4,&uart_conf.comm);
 
     // log_info("UART config:");
