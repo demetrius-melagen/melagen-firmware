@@ -26,30 +26,30 @@ static void * task_uart_test(void * param)
         // Touch watchdog to prevent reset.
         // This should be tied into other tasks as well, to ensure everything is running.
         wdt_clear();
-        // log_info("Status of UART Device 4", gs_uart_status(4));
-        uint8_t incoming_byte;
-        gs_error_t err = gs_uart_read(4, 0, &incoming_byte);  
-        if (err == GS_OK) {
-            log_info("Received byte on UART4: 0x%02X (%c)", incoming_byte, incoming_byte);
+        // log_info("Status of UART Device 1", gs_uart_status(4));
+        // uint8_t incoming_byte;
+        // gs_error_t err = gs_uart_read(1, 0, &incoming_byte);  
+        // if (err == GS_OK) {
+        //     log_info("Received byte on UART4: 0x%02X (%c)", incoming_byte, incoming_byte);
 
-            // state machine with switch case
-            // if received byte is STX
-                // tunnel is open
+        //     // state machine with switch case
+        //     // if received byte is STX
+        //         // tunnel is open
 
-                // send X days worth of data 
-            // if received byte is ETX
-                // tunnel is closed
-            // if received byte is (safe mode)
-                // put radfet data collection task to sleep
-                // 
-        } else if (err == GS_ERROR_TIMEOUT) {
-            // log_info("UART4 read timeout");
-        } else {
-            log_error("UART4 read failed with error: %d", err);
-        }
-
-        // gs_uart_write(4, 10000, 'A');
+        //         // send X days worth of data 
+        //     // if received byte is ETX
+        //         // tunnel is closed
+        //     // if received byte is (safe mode)
+        //         // put radfet data collection task to sleep
+        //         // 
+        // } else if (err == GS_ERROR_TIMEOUT) {
+        //     // log_info("UART1 read timeout");
+        // } else {
+        //     log_error("UART1 read failed with error: %d", err);
+        // }
+        gs_uart_write(1, 1000, 'A');
         // log_info("Writing A to UART");
+
     }
     // Will never get here
     gs_thread_exit(NULL);
@@ -57,13 +57,11 @@ static void * task_uart_test(void * param)
 
 void uart_test_init(void)
 {
-    
     // gs_uart_config_t uart_conf;
     // gs_uart_get_default_config(&uart_conf);
     // uart_conf.comm.bps = 57600;
     // gs_uart_init(4, &uart_conf);
     // gs_uart_change_comm(4,&uart_conf.comm);
-
     // log_info("UART config:");
     // log_info("  Baudrate:     %"PRIu32, uart_conf.comm.bps);
     // log_info("  Data bits:    %u", (unsigned int)uart_conf.comm.data_bits);
@@ -72,7 +70,7 @@ void uart_test_init(void)
     // log_info("  Flow control: %u", (unsigned int)uart_conf.comm.flow_control);    
     // log_info("  TX queue size: %u", (unsigned int)uart_conf.tx_queue_size);
     // log_info("  RX queue size: %u", (unsigned int)uart_conf.rx_queue_size);
-
+    gs_a3200_uart_init(1, true, 57600);
     gs_thread_create("UART Test", task_uart_test, NULL,
                      gs_a3200_get_default_stack_size(),
                      GS_THREAD_PRIORITY_LOW, 0, NULL);
