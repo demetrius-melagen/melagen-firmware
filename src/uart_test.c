@@ -28,8 +28,8 @@ static void * task_uart_test(void * param)
         wdt_clear();
         // log_info("Status of UART Device 4", gs_uart_status(4));
         uint8_t incoming_byte;
-        gs_error_t res = gs_uart_read(4, 1000, &incoming_byte);  
-        if (res == GS_OK) {
+        gs_error_t err = gs_uart_read(4, 1000, incoming_byte);  
+        if (err == GS_OK) {
             log_info("Received byte on UART4: 0x%02X (%c)", incoming_byte, incoming_byte);
             // if received byte is STX
                 // tunnel is open
@@ -37,10 +37,10 @@ static void * task_uart_test(void * param)
             // if received byte is ETX
                 // tunnel is closed
             // if received byte is (safe mode)
-        } else if (res == GS_ERROR_TIMEOUT) {
+        } else if (err == GS_ERROR_TIMEOUT) {
             // log_info("UART4 read timeout");
         } else {
-            log_error("UART4 read failed with error: %d", res);
+            log_error("UART4 read failed with error: %d", err);
         }
 
         // gs_uart_write(4, 10000, 'A');
