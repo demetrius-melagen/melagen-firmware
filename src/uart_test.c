@@ -37,16 +37,20 @@ static void * task_uart_test(void * param)
             // gs_uart_write(USART1, 10000, incoming_byte);
             // state machine with switch case
             // if received byte is STX
-            if (incoming_byte == STX){
+            switch (incoming_byte){
+                case STX:
                 // tunnel is open
                 // send X days worth of data 
-                
-            }
-            // if received byte is ETX
+                break;
+                case ETX:
+                // if received byte is ETX
                 // tunnel is closed
-            // if received byte is (safe mode)
+                break;
+                // if received byte is (safe mode)
                 // put radfet data collection task to sleep
                 // 
+            }
+            
         } else if (err == GS_ERROR_TIMEOUT) {
             // log_info("UART1 read timeout");
         } else {
