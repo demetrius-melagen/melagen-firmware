@@ -31,14 +31,20 @@ static void * task_uart_test(void * param)
         gs_error_t res = gs_uart_read(4, 1000, &incoming_byte);  
         if (res == GS_OK) {
             log_info("Received byte on UART4: 0x%02X (%c)", incoming_byte, incoming_byte);
-            // state machine
+            // if received byte is STX
+                // tunnel is open
+                // send X days worth of data 
+            // if received byte is ETX
+                // tunnel is closed
+            // if received byte is (safe mode)
         } else if (res == GS_ERROR_TIMEOUT) {
             // log_info("UART4 read timeout");
         } else {
             log_error("UART4 read failed with error: %d", res);
         }
 
-        // gs_uart_write(4, 1000, 0x02);
+        gs_uart_write(4, 10000, 'A');
+        // log_info("Writing A to UART");
     }
     // Will never get here
     gs_thread_exit(NULL);
@@ -46,9 +52,11 @@ static void * task_uart_test(void * param)
 
 void uart_test_init(void)
 {
-    // gs_uart_config_t uart_conf;
-    // gs_uart_get_default_config(&uart_conf);
-    // uart_conf.comm.bps = 57600;
+    
+    gs_uart_config_t uart_conf;
+    gs_uart_get_default_config(&uart_conf);
+    uart_conf.comm.bps = 57600;
+    gs_uart_init(4, &uart_conf);
     // gs_uart_change_comm(4,&uart_conf.comm);
 
     // log_info("UART config:");
