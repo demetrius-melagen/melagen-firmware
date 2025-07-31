@@ -37,20 +37,18 @@ static void * task_mode_op(void * param)
         uint8_t incoming_byte;
         gs_error_t err = gs_uart_read(USART1, 1000, &incoming_byte);  
         if (err == GS_OK) {
-            log_info("Received byte on UART4: 0x%02X (%c)", incoming_byte, incoming_byte);
+            log_info("Received byte on USART1: 0x%02X (%c)", incoming_byte, incoming_byte);
             // gs_uart_write(USART1, 10000, incoming_byte);
             // state machine with switch case
             // if received byte is STX
             switch (incoming_byte){
                 case STX:
                     log_info("STX received: sending last two samples from FRAM");
-
                     for (int i = 2; i > 0; i--) {
                         int32_t offset = (int32_t)fram_write_offset - i * PKT_SIZE;
                         if (offset < 0) {
                             offset += fram->size;
                         }
-
                         radfet_packet_t pkt;
                         gs_vmem_cpy(&pkt, fram->virtmem.p + offset, sizeof(pkt));
 
