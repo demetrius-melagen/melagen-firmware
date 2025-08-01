@@ -19,13 +19,21 @@
 #include <gs/csp/csp.h>
 #include <gs/csp/drivers/kiss/kiss.h>
 #include <gs/a3200/uart.h>
+#include <gs/thirdparty/flash/spn_fl512s.h>
+#include <gs/embed/asf/drivers/spi/master.h>
+#include <gs/util/time.h>
+#include <gs/util/string.h>
+#include <gs/util/mutex.h>
 
 #define USART1 1
-#define STX 0x32
+#define STX 0x02
 #define ETX 0x03
+#define SAFE 0x04
+#define IDLE 0x05
  
 static const gs_vmem_t *fram = NULL;
 // uint32_t fram_write_offset = 0;
+bool safe_mode = false; 
 
 static void * task_mode_op(void * param)
 {
@@ -43,8 +51,8 @@ static void * task_mode_op(void * param)
             // if received byte is STX
             switch (incoming_byte){
                 case STX:
-                    log_info("STX received: sending last two samples from FRAM");
-                    for (int i = 2; i > 0; i--) {
+                    log_info("STX received: sending samples from FRAM");
+                    for (int i = 3; i > 0; i--) {
                         int32_t offset = (int32_t)fram_write_offset - i * PKT_SIZE;
                         if (offset < 0) {
                             offset += fram->size;
@@ -57,9 +65,7 @@ static void * task_mode_op(void * param)
                             log_error("CRC mismatch @ offset %d: expected 0x%04X, got 0x%04X", (int)offset, crc, (unsigned int)pkt.crc16);
                             continue;
                         }
-
                         log_info("Sending sample with timestamp %u", (unsigned int)pkt.sample.timestamp);
-
                         size_t bytes_sent = 0;
                         gs_error_t tx_err = gs_uart_write_buffer(USART1, 1000, (uint8_t *)&pkt, sizeof(pkt), &bytes_sent);
                         if (tx_err == GS_OK && bytes_sent == sizeof(pkt)) {
@@ -75,8 +81,15 @@ static void * task_mode_op(void * param)
 
                     break;
                 // if received byte is (safe mode)
-                // put radfet data collection task to sleep
-                // 
+                case SAFE:
+                    // put radfet data collection task to sleep
+                    safe_mode = true;
+                    log_info("Radfet Data Collection Paused");
+                    break;
+                case IDLE:
+                    safe_mode = false;
+                    log_info("Radfet Data Collection Resumed");
+                    break;
             }
             
         } else if (err == GS_ERROR_TIMEOUT) {
@@ -91,8 +104,6 @@ static void * task_mode_op(void * param)
 
 void mode_op_init(void)
 {
-    // log_info("UART test init starting...");
-
     fram = gs_vmem_get_by_name("fram");
     if (!fram) {
         log_error("FRAM not found!");

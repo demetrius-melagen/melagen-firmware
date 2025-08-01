@@ -8,6 +8,8 @@
 #define PKT_SIZE sizeof(radfet_packet_t)
 
 extern uint32_t fram_write_offset;
+extern bool safe_mode;
+
 // Sample interval (ms) — adjust as needed
 extern uint32_t sample_rate_ms;  
 

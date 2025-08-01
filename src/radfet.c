@@ -29,8 +29,9 @@ static const uint8_t radfet_channels[NUM_RADFET] = {
     // 0   // D5 → AD0
 }; 
 
-// static const gs_vmem_t *fram = NULL;
-// uint32_t fram_write_offset = 0;
+static const gs_vmem_t *fram = NULL;
+uint32_t fram_write_offset = 0;
+
 
 #define TCA9539_I2C_ADDR  0x74 // I2C expander address
 #define TCA9539_CFG_PORT0 0x06 
@@ -136,9 +137,6 @@ gs_error_t radfet_read_all(radfet_sample_t *sample, int r){
     int16_t all_adc_values[GS_A3200_ADC_NCHANS] = {0};
     gs_error_t err = gs_a3200_adc_channels_sample(all_adc_values); //take a sample of all adc channels
     uint32_t rel_ms = gs_time_rel_ms();
-    // uint32_t ms_part = rel_ms % 1000;
-    // uint32_t sec_part = rel_ms / 1000;
-    // uint32_t uptime_ms = gs_time_uptime();
     if (err != GS_OK) {
         log_error("ADC bulk sample failed: %s", gs_error_string(err));
         return err;
@@ -226,49 +224,47 @@ uint32_t sample_rate_ms = 60000;  // 60 seconds
 static void * radfet_poll_task(void * param)
 {
     radfet_packet_t pkt;
-    // pkt.sync[0] = 0xAA;
-    // pkt.sync[1] = 0x55;
-    // pkt.cmd_id  = 0x01;
 
     // int16_t sensor_mv[NUM_RADFET][RADFET_PER_MODULE]; // index [sensor][R1/R2]
     for (;;) {
         // Touch watchdog to prevent reset.
         // This should be tied into other tasks as well, to ensure everything is running.
         wdt_clear();
-
-        pkt.sample.timestamp = gs_time_rel_ms() / 1000;
-        log_info("=== RADFET Sample ==="); 
-       
-        // updated loop 
-        for (int r= 0; r < RADFET_PER_MODULE; r++){
-            // enable all sensors and all R
-            radfet_enable_all(r);
-            // poll all adc channels 
-            if (radfet_read_all(&pkt.sample, r) != GS_OK) {
-                log_error("Failed to read R%d channels", r + 1);
+        if (safe_mode == false){
+            pkt.sample.timestamp = gs_time_rel_ms();
+            log_info("=== RADFET Sample ==="); 
+        
+            // updated loop 
+            for (int r= 0; r < RADFET_PER_MODULE; r++){
+                // enable all sensors and all R
+                radfet_enable_all(r);
+                // poll all adc channels 
+                if (radfet_read_all(&pkt.sample, r) != GS_OK) {
+                    log_error("Failed to read R%d channels", r + 1);
+                }
+                // disable all sensors  
+                radfet_disable_all();
             }
-            // disable all sensors  
-            radfet_disable_all();
+            // Write sample to FRAM with circular buffer behavior
+            if (fram) {
+                if (fram_write_offset + PKT_SIZE >= fram->size) {
+                    log_info("FRAM offset exceeded — wrapping to beginning");
+                    fram_write_offset = 0;
+                }
+                log_info("Writing to FRAM: timestamp = %" PRIu32, pkt.sample.timestamp);
+                for (int i = 0; i < NUM_RADFET; i++) {
+                    log_info("  D%i R1 = %d mV, R2 = %d mV", i + 1, pkt.sample.adc[i][0], pkt.sample.adc[i][1]);
+                }
+                // pkt.length  = sizeof(pkt.sample);
+                pkt.crc16 = crc16_ccitt(&pkt, sizeof(pkt) - sizeof(pkt.crc16));
+                gs_vmem_cpy(fram->virtmem.p + fram_write_offset, &pkt, sizeof(pkt));
+                log_info("Sample written to FRAM @ offset %" PRIu32 " (timestamp = %" PRIu32 ")", fram_write_offset, pkt.sample.timestamp);
+                fram_write_offset += PKT_SIZE;
+            } else {
+                log_error("FRAM not initialized — skipping write");
+            }
+            log_info("==============================");
         }
-        // Write sample to FRAM with circular buffer behavior
-        // if (fram) {
-        //     if (fram_write_offset + PKT_SIZE >= fram->size) {
-        //         log_info("FRAM offset exceeded — wrapping to beginning");
-        //         fram_write_offset = 0;
-        //     }
-        //     log_info("Writing to FRAM: timestamp = %" PRIu32, pkt.sample.timestamp);
-        //     for (int i = 0; i < NUM_RADFET; i++) {
-        //         log_info("  D%i R1 = %d mV, R2 = %d mV", i + 1, pkt.sample.adc_mv[i][0], pkt.sample.adc_mv[i][1]);
-        //     }
-        //     pkt.length  = sizeof(pkt.sample);
-        //     pkt.crc16 = crc16_ccitt(&pkt, sizeof(pkt) - sizeof(pkt.crc16));
-        //     gs_vmem_cpy(fram->virtmem.p + fram_write_offset, &pkt, sizeof(pkt));
-        //     log_info("Sample written to FRAM @ offset %" PRIu32 " (timestamp = %" PRIu32 ")", fram_write_offset, pkt.sample.timestamp);
-        //     fram_write_offset += PKT_SIZE;
-        // } else {
-        //     log_error("FRAM not initialized — skipping write");
-        // }
-        log_info("==============================");
         //delay the task by 60 seconds
         gs_time_sleep_ms(sample_rate_ms);
     }
@@ -278,20 +274,19 @@ static void * radfet_poll_task(void * param)
 
 void radfet_task_init(void)
 {
-     // Get handle to FRAM virtual memory
-    // fram = gs_vmem_get_by_name("fram");
+    // Get handle to FRAM virtual memory
+    fram = gs_vmem_get_by_name("fram");
     // FRAM_BASE_ADDR = 0x10000000
     // on GOSH
     // vmem read <address> <length>
     // vmem read 0x10000000 8
-    // if (!fram) {
-    //     log_error("FRAM not found!");
-    //     return;
-    // } else {
-    //     log_info("FRAM found at address %x", (unsigned int)fram->virtmem.p);
-    // }
+    if (!fram) {
+        log_error("FRAM not found!");
+        return;
+    } else {
+        log_info("FRAM found at address %x", (unsigned int)fram->virtmem.p);
+    }
     // initialize i2c to i/o converter, set output ports to 0 and set ports to output mode
     tca9539_config();
-
-    gs_thread_create("radfet_poll", radfet_poll_task, NULL, gs_a3200_get_default_stack_size(), GS_THREAD_PRIORITY_LOW, 0, NULL);
+    gs_thread_create("radfet_poll", radfet_poll_task, NULL, 3000, GS_THREAD_PRIORITY_LOW, 0, NULL);
 }
