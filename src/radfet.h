@@ -3,9 +3,13 @@
 
 #include <stdint.h>
 
-#define NUM_RADFET 1
+#define NUM_RADFET 5
 #define RADFET_PER_MODULE 2
 #define PKT_SIZE sizeof(radfet_packet_t)
+
+#define FRAM_SEGMENT_SIZE  (32 * 1024)
+#define NOR_BLOCK_SIZE     (256 * 1024)
+#define NOR_PARTITION      0
 
 extern uint32_t fram_write_offset;
 extern bool safe_mode;
@@ -15,7 +19,7 @@ extern uint32_t sample_rate_ms;
 
 typedef struct __attribute__((packed)) {
     uint32_t timestamp;   // 4 bytes
-    int16_t adc[NUM_RADFET][RADFET_PER_MODULE];  // 20 bytes
+    int16_t adc[NUM_RADFET][RADFET_PER_MODULE];  // 2 x 5 x 2 = 20 bytes
 } radfet_sample_t; // Total: 24 bytes
 
 typedef struct __attribute__((packed)) {
@@ -29,10 +33,6 @@ typedef struct __attribute__((packed)) {
 // Packet structure to save in FRAM:
 // one timestamp for each poll
 // [timestamp][D1R1][D1R2][D2R1][D2R2][D3R1][D3R2][D4R1][D4R2][D5R1][D5R2]
-// 4 + 2 readings x 5 sensors x 2 bytes = 24 bytes per 60 seconds 
-// 120 samples per 2 hours
-// 120 samples × 24 bytes = 2880 bytes
-// (2880 / 32768) × 100 ≈ 8.8% of 32kB FRAM used every 2 hours
 
 uint16_t crc16_ccitt(const void *data, size_t length);
 

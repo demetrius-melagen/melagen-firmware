@@ -45,15 +45,16 @@ static void * task_mode_op(void * param)
         uint8_t incoming_byte;
         gs_error_t err = gs_uart_read(USART1, 1000, &incoming_byte);  
         if (err == GS_OK) {
-            log_info("Received byte on USART1: 0x%02X (%c)", incoming_byte, incoming_byte);
+            log_info("Received byte on USART1: 0x%02X", incoming_byte);
             // gs_uart_write(USART1, 10000, incoming_byte);
             // state machine with switch case
             // if received byte is STX
             switch (incoming_byte){
                 case STX:
                     log_info("STX received: sending samples from FRAM");
-                    for (int i = 3; i > 0; i--) {
-                        int32_t offset = (int32_t)fram_write_offset - i * PKT_SIZE;
+                    uint32_t ref = gs_time_rel_ms();
+                    for (int i = 1; i > 0; i--) {
+                        int32_t offset = (int32_t)fram_write_offset - (i * PKT_SIZE);
                         if (offset < 0) {
                             offset += fram->size;
                         }
@@ -73,25 +74,34 @@ static void * task_mode_op(void * param)
                         } else {
                             log_error("Failed to send packet: error %d, sent %u bytes", tx_err, (unsigned int)bytes_sent);
                         }
+                        //check for ETX byte or timeout
+                        err = gs_uart_read(USART1, 1000, &incoming_byte);  
+                        if (err == GS_OK) {
+                            if (incoming_byte == ETX){
+                                log_info("Tunnel is closed, ceased sending data through USART1");
+                                break;
+                            }
+                        }
+                        uint32_t timeout = gs_time_rel_ms();
+                        if (gs_time_diff_ms(ref, timeout) >= (10 * 1000)){
+                            log_info("10 second timeout, ceased sending data through USART1");
+                            break;
+                        }
                     }
-                    break;
-                case ETX:
-                    // if received byte is ETX
-                    // tunnel is closed
-
+                    uint32_t timeout = gs_time_rel_ms();
+                    log_info("Downlink completed in %u ms", (unsigned int)gs_time_diff_ms(ref, timeout));
                     break;
                 // if received byte is (safe mode)
                 case SAFE:
                     // put radfet data collection task to sleep
                     safe_mode = true;
-                    log_info("Radfet Data Collection Paused");
+                    log_info("Safe Mode: Radfet Data Collection Paused");
                     break;
                 case IDLE:
                     safe_mode = false;
-                    log_info("Radfet Data Collection Resumed");
+                    log_info("Idle Mode: Radfet Data Collection Resumed");
                     break;
             }
-            
         } else if (err == GS_ERROR_TIMEOUT) {
             // log_info("UART1 read timeout");
         } else {

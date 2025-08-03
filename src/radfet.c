@@ -19,14 +19,16 @@ RADFET Data Collection:
 #include <inttypes.h>
 #include <string.h>  // for memset
 #include "radfet.h"
+#include <gs/thirdparty/flash/spn_fl512s.h>
+
 
 //ADC RADFET pin configuration
 static const uint8_t radfet_channels[NUM_RADFET] = {
-    // 7,  // D1 → AD7
-    // 6,  // D2 → AD6
-    5  // D3 → AD5
-    // 4,  // D4 → AD4
-    // 0   // D5 → AD0
+    7,  // D1 → AD7
+    6,  // D2 → AD6
+    5,  // D3 → AD5
+    4,  // D4 → AD4
+    0   // D5 → AD0
 }; 
 
 static const gs_vmem_t *fram = NULL;
@@ -217,6 +219,37 @@ uint16_t crc16_ccitt(const void *data, size_t length) {
     return crc;
 }
 
+// void flush_fram_segment_to_nor(void) {
+//     log_info("Flushing FRAM segment to NOR @ 0x%08X", nor_write_offset);
+
+//     // Erase NOR block if we're at start of a 256 KB segment
+//     if ((nor_write_offset % NOR_BLOCK_SIZE) == 0) {
+//         gs_error_t erase_err = spn_fl512s_erase_block(NOR_PARTITION, nor_write_offset);
+//         if (erase_err != GS_OK) {
+//             log_error("NOR erase failed at 0x%08X: %s", nor_write_offset, gs_error_string(erase_err));
+//             return;
+//         } else {
+//             log_info("Erased NOR block at 0x%08X", nor_write_offset);
+//         }
+//     }
+
+//     // Copy 32 KB from FRAM to NOR
+//     for (uint32_t i = 0; i < FRAM_SEGMENT_SIZE; i += sizeof(nor_buffer)) {
+//         gs_vmem_cpy(nor_buffer, fram->virtmem.p + i, sizeof(nor_buffer));
+
+//         gs_error_t write_err = spn_fl512s_write_data(NOR_PARTITION, nor_write_offset + i, nor_buffer, sizeof(nor_buffer));
+//         if (write_err != GS_OK) {
+//             log_error("NOR write failed at 0x%08X: %s", nor_write_offset + i, gs_error_string(write_err));
+//             return;
+//         }
+//     }
+
+//     log_info("Flushed 32 KB from FRAM to NOR at offset 0x%08X", nor_write_offset);
+//     nor_write_offset += FRAM_SEGMENT_SIZE;
+// }
+
+
+
 // Sample interval (ms) — adjust as needed
 uint32_t sample_rate_ms = 60000;  // 60 seconds 
 
@@ -249,6 +282,7 @@ static void * radfet_poll_task(void * param)
             if (fram) {
                 if (fram_write_offset + PKT_SIZE >= fram->size) {
                     log_info("FRAM offset exceeded — wrapping to beginning");
+                    //flush fram into nor flash
                     fram_write_offset = 0;
                 }
                 log_info("Writing to FRAM: timestamp = %" PRIu32, pkt.sample.timestamp);
