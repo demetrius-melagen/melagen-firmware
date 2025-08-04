@@ -33,7 +33,7 @@ typedef struct __attribute__((packed)) {
 
 // Packet structure to save in FRAM:
 // one timestamp for each poll
-// [timestamp][D1R1][D1R2][D2R1][D2R2][D3R1][D3R2][D4R1][D4R2][D5R1][D5R2]
+// [timestamp][D1R1][D1R2][D2R1][D2R2][D3R1][D3R2][D4R1][D4R2][D5R1][D5R2][CRC]
 
 uint16_t crc16_ccitt(const void *data, size_t length);
 
