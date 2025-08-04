@@ -20,7 +20,7 @@ RADFET Data Collection:
 #include <string.h>  // for memset
 #include "radfet.h"
 #include <gs/thirdparty/flash/spn_fl512s.h>
-
+#include <gs/embed/drivers/flash/mcu_flash.h>
 
 //ADC RADFET pin configuration
 static const uint8_t radfet_channels[NUM_RADFET] = {
@@ -258,7 +258,33 @@ uint16_t crc16_ccitt(const void *data, size_t length) {
 //     return GS_OK;
 // }
 
+void test_internal_flash_rw(void) {
+    uint8_t test_value = 0xAB;     // Arbitrary byte to write
+    uint8_t read_value = 0x00;     // Variable to store read-back
+    void *flash_addr = (void *)0x80040000;  // Pick a safe offset in internal flash
 
+    log_info("Writing 0x%02X to internal flash at address %p", test_value, flash_addr);
+
+    gs_error_t res_write = gs_mcu_flash_write_data(flash_addr, &test_value, sizeof(test_value));
+    if (res_write != GS_OK) {
+        log_error("Flash write failed with code %d", res_write);
+        return;
+    }
+
+    gs_error_t res_read = gs_mcu_flash_read_data(&read_value, flash_addr, sizeof(read_value));
+    if (res_read != GS_OK) {
+        log_error("Flash read failed with code %d", res_read);
+        return;
+    }
+
+    log_info("Read back 0x%02X from internal flash at address %p", read_value, flash_addr);
+
+    if (read_value == test_value) {
+        log_info("Flash test PASSED: values match.");
+    } else {
+        log_error("Flash test FAILED: expected 0x%02X, got 0x%02X", test_value, read_value);
+    }
+}
 
 // Sample interval (ms) — adjust as needed
 uint32_t sample_rate_ms =60000;  // 60 seconds 
@@ -326,6 +352,8 @@ static void * radfet_poll_task(void * param)
 
 void radfet_task_init(void)
 {
+    test_internal_flash_rw();
+
     // Get handle to FRAM virtual memory
     fram = gs_vmem_get_by_name("fram");
     // FRAM_BASE_ADDR = 0x10000000
