@@ -28,7 +28,7 @@ typedef struct __attribute__((packed)) {
     uint16_t crc16;          // 2 bytes, CRC over all prior bytes
 } radfet_packet_t;
 
-// Packet structure to save in FRAM:
+// Data layout:
 // one timestamp for each poll
 // [timestamp][D1R1][D1R2][D2R1][D2R2][D3R1][D3R2][D4R1][D4R2][D5R1][D5R2][CRC]
 
