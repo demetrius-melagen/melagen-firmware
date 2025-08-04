@@ -24,19 +24,22 @@
 #include <gs/util/time.h>
 #include <gs/util/string.h>
 #include <gs/util/mutex.h>
+#include <gs/embed/drivers/flash/mcu_flash.h>
 
 #define USART1 1
 #define STX 0x02
 #define ETX 0x03
 #define SAFE 0x04
 #define IDLE 0x05
-#define NUM_SAMPLES_TO_SEND 1200
+#define NUM_SAMPLES_TO_SEND 2400
 #define CHUNK_SIZE 100
 #define MAX_TRANSMISSION_MS 10000  // 10 seconds
  
-static const gs_vmem_t *fram = NULL;
+// static const gs_vmem_t *fram = NULL;
 // uint32_t fram_write_offset = 0;
 bool safe_mode = false; 
+
+
 
 static void * task_mode_op(void * param)
 {
@@ -57,7 +60,7 @@ static void * task_mode_op(void * param)
                 case STX:
                     
                     num_to_send = (samples_saved < NUM_SAMPLES_TO_SEND) ? samples_saved : NUM_SAMPLES_TO_SEND;
-                    log_info("STX received: sending up to %" PRIu32 " samples from FRAM", num_to_send);
+                    log_info("STX received: sending up to %" PRIu32 " samples from internal flash", num_to_send);
                     uint32_t start_time = gs_time_rel_ms();
 
                     for (int chunk = 0; chunk < NUM_SAMPLES_TO_SEND; chunk += CHUNK_SIZE) {
@@ -81,11 +84,21 @@ static void * task_mode_op(void * param)
 
                             if (packet_index >= samples_saved) continue;
 
-                            int32_t offset = (int32_t)fram_write_offset - ((samples_saved - packet_index) * PKT_SIZE);
-                            if (offset < 0) offset += (fram->size - (fram->size % PKT_SIZE));
+                            // int32_t offset = (int32_t)fram_write_offset - ((samples_saved - packet_index) * PKT_SIZE);
+                            // if (offset < 0) offset += (fram->size - (fram->size % PKT_SIZE));
 
+                            // radfet_packet_t temp_pkt;
+                            // gs_vmem_cpy(&temp_pkt, fram->virtmem.p + offset, sizeof(radfet_packet_t));
+                            int32_t offset = (int32_t)flash_write_offset - ((samples_saved - packet_index) * PKT_SIZE);
+                            if (offset < 0) offset += RADFET_FLASH_SIZE;
+
+                            void *read_addr = (uint8_t *)RADFET_FLASH_START + offset;
                             radfet_packet_t temp_pkt;
-                            gs_vmem_cpy(&temp_pkt, fram->virtmem.p + offset, sizeof(radfet_packet_t));
+                            gs_error_t rerr = gs_mcu_flash_read_data(&temp_pkt, read_addr, sizeof(radfet_packet_t));
+                            if (rerr != GS_OK) {
+                                log_error("Flash read failed at offset %" PRId32 ": %s", offset, gs_error_string(rerr));
+                                continue;
+                            }
 
                             uint16_t crc = crc16_ccitt(&temp_pkt, sizeof(radfet_packet_t) - sizeof(temp_pkt.crc16));
                             if (crc != temp_pkt.crc16) {
@@ -103,10 +116,11 @@ static void * task_mode_op(void * param)
 
                         now = gs_time_rel_ms();  // re-check after sending
                         if (tx_err == GS_OK && bytes_sent == bytes_to_send) {
-                            log_info("Sent chunk %d: %u samples (%u bytes)", chunk / CHUNK_SIZE, (unsigned int)samples_this_chunk, (unsigned int)bytes_sent);
+                            log_info("Sent chunk %d: %u samples (%u bytes)", 
+                                chunk / CHUNK_SIZE, (unsigned int)valid_sample_count, (unsigned int)bytes_sent);
                         } else {
                             log_error("Failed to send chunk %d: error %d, sent %u of %u bytes",
-                                    chunk / CHUNK_SIZE, tx_err, (unsigned int)bytes_sent, (unsigned int)bytes_to_send);
+                                chunk / CHUNK_SIZE, tx_err, (unsigned int)bytes_sent, (unsigned int)bytes_to_send);
                             break;
                         }
 
@@ -142,12 +156,13 @@ static void * task_mode_op(void * param)
 
 void mode_op_init(void)
 {
-    fram = gs_vmem_get_by_name("fram");
-    if (!fram) {
-        log_error("FRAM not found!");
-        return;
-    }
-    log_info("FRAM found at address %x", (unsigned int)fram->virtmem.p);
+  
+    // fram = gs_vmem_get_by_name("fram");
+    // if (!fram) {
+    //     log_error("FRAM not found!");
+    //     return;
+    // }
+    // log_info("FRAM found at address %x", (unsigned int)fram->virtmem.p);
 
     gs_uart_config_t uart_conf;
     gs_uart_get_default_config(&uart_conf);

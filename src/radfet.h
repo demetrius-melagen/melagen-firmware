@@ -7,11 +7,16 @@
 #define RADFET_PER_MODULE 2
 #define PKT_SIZE sizeof(radfet_packet_t)
 
-#define FRAM_SIZE  (32 * 1024)
-#define NOR_PARTITION      0
-#define SAMPLES_PER_BLOCK    (SPN_FL512S_SECTOR_SIZE / PKT_SIZE)  
+#define RADFET_FLASH_START ((void *) 0x80040000)
+#define RADFET_FLASH_END   ((void *) 0x80080000)
+#define RADFET_FLASH_SIZE  (0x80000 - 0x40000)
 
-extern uint32_t fram_write_offset;
+// #define FRAM_SIZE  (32 * 1024)
+// #define NOR_PARTITION      0
+// #define SAMPLES_PER_BLOCK    (SPN_FL512S_SECTOR_SIZE / PKT_SIZE)  
+
+// extern uint32_t fram_write_offset;
+extern uint32_t flash_write_offset;
 extern bool safe_mode;
 extern uint32_t samples_saved;
 
@@ -28,9 +33,9 @@ typedef struct __attribute__((packed)) {
     uint16_t crc16;          // 2 bytes, CRC over all prior bytes
 } radfet_packet_t;
 
-// Data layout:
+// Packet structure to save in FRAM:
 // one timestamp for each poll
-// [timestamp][D1R1][D1R2][D2R1][D2R2][D3R1][D3R2][D4R1][D4R2][D5R1][D5R2][CRC]
+// [timestamp][D1R1][D1R2][D2R1][D2R2][D3R1][D3R2][D4R1][D4R2][D5R1][D5R2]
 
 uint16_t crc16_ccitt(const void *data, size_t length);
 
