@@ -277,32 +277,6 @@ static void * radfet_poll_task(void * param)
                 // disable all sensors  
                 radfet_disable_all();
             }
-            // Write sample to FRAM with circular buffer behavior
-            // if (fram) {
-            //     if (fram_write_offset + PKT_SIZE >= fram->size) {
-            //         log_info("FRAM offset exceeded — wrapping to beginning");
-            //         //flush fram into nor flash
-            //         // uint32_t flush_offset = (fram_write_offset - (samples_saved * PKT_SIZE) + FRAM_SIZE) % FRAM_SIZE;
-            //         // gs_error_t err = flush_fram_to_nor(flush_offset, samples_saved);
-            //         // if (err != GS_OK){
-            //         //     log_error("Failed to flush FRAM to NOR flash with error %s", gs_error_string(err));
-            //         // } 
-            //         // samples_saved = 0;
-            //         fram_write_offset = 0;
-            //     }
-            //     log_info("Writing to FRAM: timestamp = %" PRIu32, pkt.sample.timestamp);
-            //     for (int i = 0; i < NUM_RADFET; i++) {
-            //         log_info("  D%i R1 = %d mV, R2 = %d mV", i + 1, pkt.sample.adc[i][0], pkt.sample.adc[i][1]);
-            //     }
-            //     // pkt.length  = sizeof(pkt.sample);
-            //     pkt.crc16 = crc16_ccitt(&pkt, sizeof(pkt) - sizeof(pkt.crc16));
-            //     gs_vmem_cpy(fram->virtmem.p + fram_write_offset, &pkt, sizeof(pkt));
-            //     log_info("Sample written to FRAM @ offset %" PRIu32 " (timestamp = %" PRIu32 ")", fram_write_offset, pkt.sample.timestamp);
-            //     fram_write_offset += PKT_SIZE;
-            //     samples_saved++;
-            // } else {
-            //     log_error("FRAM not initialized — skipping write");
-            // }
 
             // Write sample to internal flash with circular buffer behavior
             if ((flash_write_offset + PKT_SIZE) >= RADFET_FLASH_SIZE) {
@@ -340,21 +314,8 @@ static void * radfet_poll_task(void * param)
 void radfet_task_init(void)
 {
     // test_internal_flash_rw();
-
-    // Get handle to FRAM virtual memory
-    // fram = gs_vmem_get_by_name("fram");
-    // FRAM_BASE_ADDR = 0x10000000
-    // on GOSH
-    // vmem read <address> <length>
-    // vmem read 0x10000000 8
-    // spn read 0 0
     // peek 0x80040000 26
-    // if (!fram) {
-    //     log_error("FRAM not found!");
-    //     return;
-    // } else {
-    //     log_info("FRAM found at address %x", (unsigned int)fram->virtmem.p);
-    // }
+
     // initialize i2c to i/o converter, set output ports to 0 and set ports to output mode
     tca9539_config();
     gs_thread_create("radfet_poll", radfet_poll_task, NULL, 3000, GS_THREAD_PRIORITY_LOW, 0, NULL);

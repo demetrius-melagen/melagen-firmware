@@ -53,7 +53,6 @@ static void * task_mode_op(void * param)
         gs_error_t err = gs_uart_read(USART1, 1000, &incoming_byte);  
         if (err == GS_OK) {
             log_info("Received byte on USART1: 0x%02X", incoming_byte);
-            // gs_uart_write(USART1, 10000, incoming_byte);
             // state machine with switch case
             // if received byte is STX
             switch (incoming_byte){
@@ -83,12 +82,6 @@ static void * task_mode_op(void * param)
                             uint32_t packet_index = chunk + i;
 
                             if (packet_index >= samples_saved) continue;
-
-                            // int32_t offset = (int32_t)fram_write_offset - ((samples_saved - packet_index) * PKT_SIZE);
-                            // if (offset < 0) offset += (fram->size - (fram->size % PKT_SIZE));
-
-                            // radfet_packet_t temp_pkt;
-                            // gs_vmem_cpy(&temp_pkt, fram->virtmem.p + offset, sizeof(radfet_packet_t));
                             int32_t offset = (int32_t)flash_write_offset - ((samples_saved - packet_index) * PKT_SIZE);
                             if (offset < 0) offset += RADFET_FLASH_SIZE;
 
@@ -156,14 +149,6 @@ static void * task_mode_op(void * param)
 
 void mode_op_init(void)
 {
-  
-    // fram = gs_vmem_get_by_name("fram");
-    // if (!fram) {
-    //     log_error("FRAM not found!");
-    //     return;
-    // }
-    // log_info("FRAM found at address %x", (unsigned int)fram->virtmem.p);
-
     gs_uart_config_t uart_conf;
     gs_uart_get_default_config(&uart_conf);
     uart_conf.comm.bps = 57600;
