@@ -33,7 +33,7 @@ static const uint8_t radfet_channels[NUM_RADFET] = {
 
 static const gs_vmem_t *fram = NULL;
 uint32_t fram_write_offset = 0;
-
+static uint32_t nor_block_index = 0;
 
 #define TCA9539_I2C_ADDR  0x74 // I2C expander address
 #define TCA9539_CFG_PORT0 0x06 
@@ -219,39 +219,50 @@ uint16_t crc16_ccitt(const void *data, size_t length) {
     return crc;
 }
 
-// void flush_fram_segment_to_nor(void) {
-//     log_info("Flushing FRAM segment to NOR @ 0x%08X", nor_write_offset);
+// gs_error_t flush_fram_to_nor(uint32_t start_offset, uint32_t num_samples) {
+//     if (num_samples > SAMPLES_PER_BLOCK) {
+//         log_error("Too many samples (%lu) for a single NOR block (max %lu)", num_samples, SAMPLES_PER_BLOCK);
+//         return GS_ERROR_ARG;
+//     }
 
-//     // Erase NOR block if we're at start of a 256 KB segment
-//     if ((nor_write_offset % NOR_BLOCK_SIZE) == 0) {
-//         gs_error_t erase_err = spn_fl512s_erase_block(NOR_PARTITION, nor_write_offset);
-//         if (erase_err != GS_OK) {
-//             log_error("NOR erase failed at 0x%08X: %s", nor_write_offset, gs_error_string(erase_err));
-//             return;
-//         } else {
-//             log_info("Erased NOR block at 0x%08X", nor_write_offset);
+//     uint8_t buffer[SPN_FL512S_SECTOR_SIZE];
+//     for (uint32_t i = 0; i < num_samples; ++i) {
+//         uint32_t sample_addr = (start_offset + i * PKT_SIZE) % FRAM_SIZE;
+//         gs_vmem_cpy(&buffer[i * PKT_SIZE], fram->virtmem.p + sample_addr, PKT_SIZE);
+//     }
+
+//     uint32_t nor_addr = nor_block_index * SPN_FL512S_SECTOR_SIZE;
+
+//     if (samples_saved == 0) {
+//         gs_error_t err = spn_fl512s_erase_block(NOR_PARTITION, nor_addr);
+//         if (err != GS_OK) {
+//             log_error("NOR erase failed @ block %lu (addr 0x%lx): %s", nor_block_index, nor_addr, gs_error_string(err));
+//             return err;
 //         }
 //     }
 
-//     // Copy 32 KB from FRAM to NOR
-//     for (uint32_t i = 0; i < FRAM_SEGMENT_SIZE; i += sizeof(nor_buffer)) {
-//         gs_vmem_cpy(nor_buffer, fram->virtmem.p + i, sizeof(nor_buffer));
-
-//         gs_error_t write_err = spn_fl512s_write_data(NOR_PARTITION, nor_write_offset + i, nor_buffer, sizeof(nor_buffer));
-//         if (write_err != GS_OK) {
-//             log_error("NOR write failed at 0x%08X: %s", nor_write_offset + i, gs_error_string(write_err));
-//             return;
-//         }
+//     gs_error_t err = spn_fl512s_write_data(NOR_PARTITION, nor_addr, buffer, (uint16_t)(num_samples * PKT_SIZE));
+//     if (err != GS_OK) {
+//         log_error("NOR write failed @ block %lu (addr 0x%lx): %s", nor_block_index, nor_addr, gs_error_string(err));
+//         return err;
 //     }
 
-//     log_info("Flushed 32 KB from FRAM to NOR at offset 0x%08X", nor_write_offset);
-//     nor_write_offset += FRAM_SEGMENT_SIZE;
+//     log_info("Flushed %lu samples (%lu bytes) from FRAM offset 0x%lx to NOR block %lu (addr 0x%lx)",
+//              num_samples, num_samples * PKT_SIZE, start_offset, nor_block_index, nor_addr);
+
+//     nor_block_index++;
+//     if (nor_block_index * SPN_FL512S_SECTOR_SIZE >= SPN_FL512S_SIZE) {
+//         nor_block_index = 0;  // wrap
+//     }
+
+//     return GS_OK;
 // }
 
 
 
 // Sample interval (ms) — adjust as needed
-uint32_t sample_rate_ms = 60000;  // 60 seconds 
+uint32_t sample_rate_ms =60000;  // 60 seconds 
+uint32_t samples_saved = 0;
 
 // Task that periodically samples RADFETs and stores data
 static void * radfet_poll_task(void * param)
@@ -283,6 +294,12 @@ static void * radfet_poll_task(void * param)
                 if (fram_write_offset + PKT_SIZE >= fram->size) {
                     log_info("FRAM offset exceeded — wrapping to beginning");
                     //flush fram into nor flash
+                    // uint32_t flush_offset = (fram_write_offset - (samples_saved * PKT_SIZE) + FRAM_SIZE) % FRAM_SIZE;
+                    // gs_error_t err = flush_fram_to_nor(flush_offset, samples_saved);
+                    // if (err != GS_OK){
+                    //     log_error("Failed to flush FRAM to NOR flash with error %s", gs_error_string(err));
+                    // } 
+                    // samples_saved = 0;
                     fram_write_offset = 0;
                 }
                 log_info("Writing to FRAM: timestamp = %" PRIu32, pkt.sample.timestamp);
@@ -294,6 +311,7 @@ static void * radfet_poll_task(void * param)
                 gs_vmem_cpy(fram->virtmem.p + fram_write_offset, &pkt, sizeof(pkt));
                 log_info("Sample written to FRAM @ offset %" PRIu32 " (timestamp = %" PRIu32 ")", fram_write_offset, pkt.sample.timestamp);
                 fram_write_offset += PKT_SIZE;
+                samples_saved++;
             } else {
                 log_error("FRAM not initialized — skipping write");
             }
@@ -314,6 +332,7 @@ void radfet_task_init(void)
     // on GOSH
     // vmem read <address> <length>
     // vmem read 0x10000000 8
+    // spn read 0 0
     if (!fram) {
         log_error("FRAM not found!");
         return;

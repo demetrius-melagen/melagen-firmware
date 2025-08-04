@@ -7,12 +7,13 @@
 #define RADFET_PER_MODULE 2
 #define PKT_SIZE sizeof(radfet_packet_t)
 
-#define FRAM_SEGMENT_SIZE  (32 * 1024)
-#define NOR_BLOCK_SIZE     (256 * 1024)
+#define FRAM_SIZE  (32 * 1024)
 #define NOR_PARTITION      0
+#define SAMPLES_PER_BLOCK    (SPN_FL512S_SECTOR_SIZE / PKT_SIZE)  
 
 extern uint32_t fram_write_offset;
 extern bool safe_mode;
+extern uint32_t samples_saved;
 
 // Sample interval (ms) — adjust as needed
 extern uint32_t sample_rate_ms;  

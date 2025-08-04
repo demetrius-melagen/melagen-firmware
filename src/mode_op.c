@@ -30,6 +30,9 @@
 #define ETX 0x03
 #define SAFE 0x04
 #define IDLE 0x05
+#define NUM_SAMPLES_TO_SEND 1200
+#define CHUNK_SIZE 100
+#define MAX_TRANSMISSION_MS 10000  // 10 seconds
  
 static const gs_vmem_t *fram = NULL;
 // uint32_t fram_write_offset = 0;
@@ -43,6 +46,7 @@ static void * task_mode_op(void * param)
         // This should be tied into other tasks as well, to ensure everything is running.
         wdt_clear();
         uint8_t incoming_byte;
+        uint32_t num_to_send;
         gs_error_t err = gs_uart_read(USART1, 1000, &incoming_byte);  
         if (err == GS_OK) {
             log_info("Received byte on USART1: 0x%02X", incoming_byte);
@@ -51,45 +55,69 @@ static void * task_mode_op(void * param)
             // if received byte is STX
             switch (incoming_byte){
                 case STX:
-                    log_info("STX received: sending samples from FRAM");
-                    uint32_t ref = gs_time_rel_ms();
-                    for (int i = 1; i > 0; i--) {
-                        int32_t offset = (int32_t)fram_write_offset - (i * PKT_SIZE);
-                        if (offset < 0) {
-                            offset += fram->size;
-                        }
-                        radfet_packet_t pkt;
-                        gs_vmem_cpy(&pkt, fram->virtmem.p + offset, sizeof(pkt));
+                    
+                    num_to_send = (samples_saved < NUM_SAMPLES_TO_SEND) ? samples_saved : NUM_SAMPLES_TO_SEND;
+                    log_info("STX received: sending up to %" PRIu32 " samples from FRAM", num_to_send);
+                    uint32_t start_time = gs_time_rel_ms();
 
-                        uint16_t crc = crc16_ccitt(&pkt, sizeof(pkt) - sizeof(pkt.crc16));
-                        if (crc != pkt.crc16) {
-                            log_error("CRC mismatch @ offset %d: expected 0x%04X, got 0x%04X", (int)offset, crc, (unsigned int)pkt.crc16);
-                            continue;
+                    for (int chunk = 0; chunk < NUM_SAMPLES_TO_SEND; chunk += CHUNK_SIZE) {
+
+                        // Check elapsed time before processing chunk
+                        uint32_t now = gs_time_rel_ms();
+                        if (gs_time_diff_ms(start_time, now) >= MAX_TRANSMISSION_MS) {
+                            log_error("Transmission timeout before chunk %d — terminating transmission.", chunk / CHUNK_SIZE);
+                            break;
                         }
-                        log_info("Sending sample with timestamp %u", (unsigned int)pkt.sample.timestamp);
-                        size_t bytes_sent = 0;
-                        gs_error_t tx_err = gs_uart_write_buffer(USART1, 1000, (uint8_t *)&pkt, sizeof(pkt), &bytes_sent);
-                        if (tx_err == GS_OK && bytes_sent == sizeof(pkt)) {
-                            log_info("Successfully sent packet (%u bytes)", (unsigned int)bytes_sent);
-                        } else {
-                            log_error("Failed to send packet: error %d, sent %u bytes", tx_err, (unsigned int)bytes_sent);
+
+                        uint32_t samples_this_chunk = (num_to_send - chunk >= CHUNK_SIZE) ? CHUNK_SIZE : (num_to_send - chunk);
+                        radfet_packet_t *packets = malloc(samples_this_chunk * sizeof(radfet_packet_t));
+                        if (!packets) {
+                            log_error("Failed to allocate memory for %u packets", (unsigned int)samples_this_chunk);
+                            break;
                         }
-                        //check for ETX byte or timeout
-                        err = gs_uart_read(USART1, 1000, &incoming_byte);  
-                        if (err == GS_OK) {
-                            if (incoming_byte == ETX){
-                                log_info("Tunnel is closed, ceased sending data through USART1");
-                                break;
+                        int valid_sample_count = 0;
+                        for (uint32_t i = 0; i < (uint32_t)samples_this_chunk; i++) {
+                            uint32_t packet_index = chunk + i;
+
+                            if (packet_index >= samples_saved) continue;
+
+                            int32_t offset = (int32_t)fram_write_offset - ((samples_saved - packet_index) * PKT_SIZE);
+                            if (offset < 0) offset += (fram->size - (fram->size % PKT_SIZE));
+
+                            radfet_packet_t temp_pkt;
+                            gs_vmem_cpy(&temp_pkt, fram->virtmem.p + offset, sizeof(radfet_packet_t));
+
+                            uint16_t crc = crc16_ccitt(&temp_pkt, sizeof(radfet_packet_t) - sizeof(temp_pkt.crc16));
+                            if (crc != temp_pkt.crc16) {
+                                log_error("Skipping invalid packet @ offset %" PRId32 " (CRC mismatch)", offset);
+                                continue;
                             }
+
+                            packets[valid_sample_count++] = temp_pkt;
                         }
-                        uint32_t timeout = gs_time_rel_ms();
-                        if (gs_time_diff_ms(ref, timeout) >= (10 * 1000)){
-                            log_info("10 second timeout, ceased sending data through USART1");
+
+                        size_t bytes_to_send = valid_sample_count * sizeof(radfet_packet_t);
+                        size_t bytes_sent = 0;
+                        gs_error_t tx_err = gs_uart_write_buffer(USART1, 1000, (uint8_t *)packets, bytes_to_send, &bytes_sent);
+                        free(packets);
+
+                        now = gs_time_rel_ms();  // re-check after sending
+                        if (tx_err == GS_OK && bytes_sent == bytes_to_send) {
+                            log_info("Sent chunk %d: %u samples (%u bytes)", chunk / CHUNK_SIZE, (unsigned int)samples_this_chunk, (unsigned int)bytes_sent);
+                        } else {
+                            log_error("Failed to send chunk %d: error %d, sent %u of %u bytes",
+                                    chunk / CHUNK_SIZE, tx_err, (unsigned int)bytes_sent, (unsigned int)bytes_to_send);
+                            break;
+                        }
+
+                        if (gs_time_diff_ms(start_time, now) >= MAX_TRANSMISSION_MS) {
+                            log_error("Transmission timeout after chunk %d — terminating.", chunk / CHUNK_SIZE);
                             break;
                         }
                     }
-                    uint32_t timeout = gs_time_rel_ms();
-                    log_info("Downlink completed in %u ms", (unsigned int)gs_time_diff_ms(ref, timeout));
+
+                    uint32_t total_elapsed = gs_time_diff_ms(start_time, gs_time_rel_ms());
+                    log_info("Downlink completed in %u ms", (unsigned int)total_elapsed);
                     break;
                 // if received byte is (safe mode)
                 case SAFE:
