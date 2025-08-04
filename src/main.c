@@ -135,6 +135,8 @@ static void hook_init_complete(void)
     extern void radfet_task_init(void);
     radfet_task_init();
 
+    extern void mode_op_init(void);
+    mode_op_init();
 }//
 
 /**
