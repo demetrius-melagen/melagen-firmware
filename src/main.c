@@ -135,12 +135,6 @@ static void hook_init_complete(void)
     extern void radfet_task_init(void);
     radfet_task_init();
 
-    // extern void comm_task_init(void);
-    // comm_task_init();
-
-    // extern void uart_test_init(void);
-    // uart_test_init();
-
 }//
 
 /**
