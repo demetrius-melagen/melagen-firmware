@@ -12,7 +12,7 @@
 #define RADFET_FLASH_SIZE  (0x80000 - 0x40000)
 
 extern uint32_t flash_write_offset;
-extern bool safe_mode;
+// extern bool safe_mode;
 extern uint32_t samples_saved;
 
 // Sample interval (ms) — adjust as needed

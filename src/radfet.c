@@ -262,7 +262,7 @@ static void * radfet_poll_task(void * param)
         // Touch watchdog to prevent reset.
         // This should be tied into other tasks as well, to ensure everything is running.
         wdt_clear();
-        if (safe_mode == false){
+        // if (safe_mode == false){
             pkt.sample.timestamp = gs_time_rel_ms();
             log_info("=== RADFET Sample ==="); 
         
@@ -303,7 +303,7 @@ static void * radfet_poll_task(void * param)
                 samples_saved++;
             }
             log_info("==============================");
-        }
+        // }
         //delay the task by 60 seconds
         gs_time_sleep_ms(sample_rate_ms);
     }

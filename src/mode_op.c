@@ -28,22 +28,23 @@
 
 #define USART1 1
 #define STX 0x02
-#define ETX 0x03
-#define SAFE 0x04
-#define IDLE 0x05
-#define NUM_SAMPLES_TO_SEND 2200
+#define ACK 0x08
+// #define ETX 0x03
+// #define SAFE 0x04
+// #define IDLE 0x05
+#define NUM_SAMPLES_TO_SEND 60 * 24 * 5
 #define CHUNK_SIZE 100
-#define MAX_TRANSMISSION_MS 10000  // 10 seconds
+// #define MAX_TRANSMISSION_MS 10000  // 10 seconds
  
 // static const gs_vmem_t *fram = NULL;
 // uint32_t fram_write_offset = 0;
-bool safe_mode = false; 
+// bool safe_mode = false; 
 
 
 
 static void * task_mode_op(void * param)
 {
-    // log_info("UART test task started!");
+    log_info("UART test task started!");
     // static radfet_packet_t packets[CHUNK_SIZE];
     for (;;) {
         // Touch watchdog to prevent reset.
@@ -67,10 +68,10 @@ static void * task_mode_op(void * param)
                         wdt_clear(); 
                         // Check elapsed time before processing chunk
                         uint32_t now = gs_time_rel_ms();
-                        if (gs_time_diff_ms(start_time, now) >= MAX_TRANSMISSION_MS) {
-                            log_error("Transmission timeout before chunk %d — terminating transmission.", chunk / CHUNK_SIZE);
-                            break;
-                        }
+                        // if (gs_time_diff_ms(start_time, now) >= MAX_TRANSMISSION_MS) {
+                        //     log_error("Transmission timeout before chunk %d — terminating transmission.", chunk / CHUNK_SIZE);
+                        //     break;
+                        // }
 
                         uint32_t samples_this_chunk = (num_to_send - chunk >= CHUNK_SIZE) ? CHUNK_SIZE : (num_to_send - chunk);
                         radfet_packet_t *packets = malloc(samples_this_chunk * sizeof(radfet_packet_t));
@@ -94,16 +95,13 @@ static void * task_mode_op(void * param)
                                 log_error("Flash read failed at offset %" PRId32 ": %s", offset, gs_error_string(rerr));
                                 continue;
                             }
-
                             uint16_t crc = crc16_ccitt(&temp_pkt, sizeof(radfet_packet_t) - sizeof(temp_pkt.crc16));
                             if (crc != temp_pkt.crc16) {
                                 log_error("Skipping invalid packet @ offset %" PRId32 " (CRC mismatch)", offset);
                                 continue;
                             }
-
                             packets[valid_sample_count++] = temp_pkt;
                         }
-
                         size_t bytes_to_send = valid_sample_count * sizeof(radfet_packet_t);
                         size_t bytes_sent = 0;
                         gs_error_t tx_err = gs_uart_write_buffer(USART1, 500, (uint8_t *)packets, bytes_to_send, &bytes_sent);
@@ -119,25 +117,25 @@ static void * task_mode_op(void * param)
                             break;
                         }
 
-                        if (gs_time_diff_ms(start_time, now) >= MAX_TRANSMISSION_MS) {
-                            log_error("Transmission timeout after chunk %d — terminating.", chunk / CHUNK_SIZE);
-                            break;
-                        }
+                        // if (gs_time_diff_ms(start_time, now) >= MAX_TRANSMISSION_MS) {
+                        //     log_error("Transmission timeout after chunk %d — terminating.", chunk / CHUNK_SIZE);
+                        //     break;
+                        // }
                     }
 
                     uint32_t total_elapsed = gs_time_diff_ms(start_time, gs_time_rel_ms());
                     log_info("Downlink completed in %u ms", (unsigned int)total_elapsed);
                     break;
                 // if received byte is (safe mode)
-                case SAFE:
-                    // put radfet data collection task to sleep
-                    safe_mode = true;
-                    log_info("Safe Mode: Radfet Data Collection Paused");
-                    break;
-                case IDLE:
-                    safe_mode = false;
-                    log_info("Idle Mode: Radfet Data Collection Resumed");
-                    break;
+                // case SAFE:
+                //     // put radfet data collection task to sleep
+                //     safe_mode = true;
+                //     log_info("Safe Mode: Radfet Data Collection Paused");
+                //     break;
+                // case IDLE:
+                //     safe_mode = false;
+                //     log_info("Idle Mode: Radfet Data Collection Resumed");
+                //     break;
             }
         } else if (err == GS_ERROR_TIMEOUT) {
             // log_info("UART1 read timeout");
