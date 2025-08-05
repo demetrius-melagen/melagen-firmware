@@ -32,7 +32,7 @@ static const uint8_t radfet_channels[NUM_RADFET] = {
 }; 
 
 // static const gs_vmem_t *fFram = NULL;
-uint32_t fram_write_offset = 0;
+// uint32_t fram_write_offset = 0;
 uint32_t flash_write_offset = 0;
 // static uint32_t nor_block_index = 0;
 
@@ -249,7 +249,7 @@ void test_internal_flash_rw(void) {
 }
 
 // Sample interval (ms) — adjust as needed
-uint32_t sample_rate_ms = 100; //60000;  // 60 seconds 
+uint32_t sample_rate_ms = 60000;  // 60 seconds 
 uint32_t samples_saved = 0;
 
 // Task that periodically samples RADFETs and stores data

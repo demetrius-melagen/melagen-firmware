@@ -31,7 +31,7 @@
 #define ETX 0x03
 #define SAFE 0x04
 #define IDLE 0x05
-#define NUM_SAMPLES_TO_SEND 2400
+#define NUM_SAMPLES_TO_SEND 2200
 #define CHUNK_SIZE 100
 #define MAX_TRANSMISSION_MS 10000  // 10 seconds
  
@@ -44,6 +44,7 @@ bool safe_mode = false;
 static void * task_mode_op(void * param)
 {
     // log_info("UART test task started!");
+    // static radfet_packet_t packets[CHUNK_SIZE];
     for (;;) {
         // Touch watchdog to prevent reset.
         // This should be tied into other tasks as well, to ensure everything is running.
@@ -63,7 +64,7 @@ static void * task_mode_op(void * param)
                     uint32_t start_time = gs_time_rel_ms();
 
                     for (int chunk = 0; chunk < NUM_SAMPLES_TO_SEND; chunk += CHUNK_SIZE) {
-
+                        wdt_clear(); 
                         // Check elapsed time before processing chunk
                         uint32_t now = gs_time_rel_ms();
                         if (gs_time_diff_ms(start_time, now) >= MAX_TRANSMISSION_MS) {
@@ -73,6 +74,7 @@ static void * task_mode_op(void * param)
 
                         uint32_t samples_this_chunk = (num_to_send - chunk >= CHUNK_SIZE) ? CHUNK_SIZE : (num_to_send - chunk);
                         radfet_packet_t *packets = malloc(samples_this_chunk * sizeof(radfet_packet_t));
+                        
                         if (!packets) {
                             log_error("Failed to allocate memory for %u packets", (unsigned int)samples_this_chunk);
                             break;
@@ -83,7 +85,7 @@ static void * task_mode_op(void * param)
 
                             if (packet_index >= samples_saved) continue;
                             int32_t offset = (int32_t)flash_write_offset - ((samples_saved - packet_index) * PKT_SIZE);
-                            if (offset < 0) offset += RADFET_FLASH_SIZE;
+                            if (offset < 0) offset += RADFET_FLASH_SIZE - (RADFET_FLASH_SIZE % PKT_SIZE);
 
                             void *read_addr = (uint8_t *)RADFET_FLASH_START + offset;
                             radfet_packet_t temp_pkt;
@@ -104,7 +106,7 @@ static void * task_mode_op(void * param)
 
                         size_t bytes_to_send = valid_sample_count * sizeof(radfet_packet_t);
                         size_t bytes_sent = 0;
-                        gs_error_t tx_err = gs_uart_write_buffer(USART1, 1000, (uint8_t *)packets, bytes_to_send, &bytes_sent);
+                        gs_error_t tx_err = gs_uart_write_buffer(USART1, 500, (uint8_t *)packets, bytes_to_send, &bytes_sent);
                         free(packets);
 
                         now = gs_time_rel_ms();  // re-check after sending
