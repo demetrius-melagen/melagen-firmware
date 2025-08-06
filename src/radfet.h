@@ -49,10 +49,6 @@ typedef struct __attribute__((packed)) {
     uint16_t crc16;               
 } radfet_metadata_t;
 
-// extern uint32_t flash_write_offset;
-// extern uint32_t samples_saved;
-// // Sample interval (ms) — adjust as needed
-// extern uint32_t sample_rate_ms;  
 extern radfet_metadata_t radfet_metadata;
 
 typedef struct __attribute__((packed)) {

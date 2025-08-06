@@ -227,7 +227,7 @@ bool radfet_load_metadata(radfet_metadata_t *meta) {
         }
     }
     if (looks_erased) {
-        log_error("Metadata region appears erased — skipping CRC check.");
+        log_info("Metadata region appears erased — skipping CRC check.");
         return false;
     }
     log_info("Metadata region not erased");
@@ -300,7 +300,7 @@ static void * radfet_poll_task(void * param)
     radfet_packet_t pkt;
     if (!metadata_loaded) {
             if (!radfet_load_metadata(&radfet_metadata)) {
-                log_error("Metadata invalid or not found — initializing defaults");
+                log_info("Metadata invalid or not found — initializing defaults");
                 radfet_metadata.flash_write_offset = 0;
                 radfet_metadata.samples_saved = 0;
                 radfet_metadata.sample_rate_ms = 60000;

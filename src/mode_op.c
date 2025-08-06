@@ -92,8 +92,10 @@ static void * task_mode_op(void * param)
 
                         // now = gs_time_rel_ms();  // re-check after sending
                         if (tx_err == GS_OK && bytes_sent == bytes_to_send) {
-                            log_info("Sent chunk %d: %u samples (%u bytes)", 
+                            if (bytes_sent > 0){
+                                log_info("Sent chunk %d: %u samples (%u bytes)", 
                                 chunk / CHUNK_SIZE, (unsigned int)valid_sample_count, (unsigned int)bytes_sent);
+                            }
                         } else {
                             log_error("Failed to send chunk %d: error %d, sent %u of %u bytes",
                                 chunk / CHUNK_SIZE, tx_err, (unsigned int)bytes_sent, (unsigned int)bytes_to_send);
