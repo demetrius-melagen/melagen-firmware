@@ -48,21 +48,15 @@ static void * task_mode_op(void * param)
             // state machine with switch case
             // if received byte is STX
             switch (incoming_byte){
-                case STX:
-                    
-                    num_to_send = (samples_saved < NUM_SAMPLES_TO_SEND) ? samples_saved : NUM_SAMPLES_TO_SEND;
+                case STX: 
+                    num_to_send = (radfet_metadata.samples_saved < NUM_SAMPLES_TO_SEND) ? radfet_metadata.samples_saved : NUM_SAMPLES_TO_SEND;
                     log_info("STX received: sending up to %" PRIu32 " samples from internal flash", num_to_send);
                     uint32_t start_time = gs_time_rel_ms();
 
                     for (int chunk = 0; chunk < NUM_SAMPLES_TO_SEND; chunk += CHUNK_SIZE) {
                         wdt_clear(); 
                         // Check elapsed time before processing chunk
-                        uint32_t now = gs_time_rel_ms();
-                        // if (gs_time_diff_ms(start_time, now) >= MAX_TRANSMISSION_MS) {
-                        //     log_error("Transmission timeout before chunk %d — terminating transmission.", chunk / CHUNK_SIZE);
-                        //     break;
-                        // }
-
+                        // uint32_t now = gs_time_rel_ms();
                         uint32_t samples_this_chunk = (num_to_send - chunk >= CHUNK_SIZE) ? CHUNK_SIZE : (num_to_send - chunk);
                         radfet_packet_t *packets = malloc(samples_this_chunk * sizeof(radfet_packet_t));
                         
@@ -73,9 +67,8 @@ static void * task_mode_op(void * param)
                         int valid_sample_count = 0;
                         for (uint32_t i = 0; i < (uint32_t)samples_this_chunk; i++) {
                             uint32_t packet_index = chunk + i;
-
-                            if (packet_index >= samples_saved) continue;
-                            int32_t offset = (int32_t)flash_write_offset - ((samples_saved - packet_index) * PKT_SIZE);
+                            if (packet_index >= radfet_metadata.samples_saved) continue;
+                            int32_t offset = (int32_t)radfet_metadata.flash_write_offset - ((radfet_metadata.samples_saved - packet_index) * PKT_SIZE);
                             if (offset < 0) offset += RADFET_FLASH_SIZE - (RADFET_FLASH_SIZE % PKT_SIZE);
 
                             void *read_addr = (uint8_t *)RADFET_FLASH_START + offset;
@@ -94,10 +87,10 @@ static void * task_mode_op(void * param)
                         }
                         size_t bytes_to_send = valid_sample_count * sizeof(radfet_packet_t);
                         size_t bytes_sent = 0;
-                        gs_error_t tx_err = gs_uart_write_buffer(USART1, 500, (uint8_t *)packets, bytes_to_send, &bytes_sent);
+                        gs_error_t tx_err = gs_uart_write_buffer(USART1, 1000, (uint8_t *)packets, bytes_to_send, &bytes_sent);
                         free(packets);
 
-                        now = gs_time_rel_ms();  // re-check after sending
+                        // now = gs_time_rel_ms();  // re-check after sending
                         if (tx_err == GS_OK && bytes_sent == bytes_to_send) {
                             log_info("Sent chunk %d: %u samples (%u bytes)", 
                                 chunk / CHUNK_SIZE, (unsigned int)valid_sample_count, (unsigned int)bytes_sent);
@@ -106,15 +99,12 @@ static void * task_mode_op(void * param)
                                 chunk / CHUNK_SIZE, tx_err, (unsigned int)bytes_sent, (unsigned int)bytes_to_send);
                             break;
                         }
-
-                        // if (gs_time_diff_ms(start_time, now) >= MAX_TRANSMISSION_MS) {
-                        //     log_error("Transmission timeout after chunk %d — terminating.", chunk / CHUNK_SIZE);
-                        //     break;
-                        // }
                     }
-
                     uint32_t total_elapsed = gs_time_diff_ms(start_time, gs_time_rel_ms());
                     log_info("Downlink completed in %u ms", (unsigned int)total_elapsed);
+                    break;
+                case ETX:
+                    log_info("Data transmission successful!");
                     break;
             }
         } else if (err == GS_ERROR_TIMEOUT) {

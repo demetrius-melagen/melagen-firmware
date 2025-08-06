@@ -31,38 +31,16 @@ static const uint8_t radfet_channels[NUM_RADFET] = {
     0   // D5 → AD0
 }; 
 
-// static const gs_vmem_t *fFram = NULL;
-// uint32_t fram_write_offset = 0;
-uint32_t flash_write_offset = 0;
-// static uint32_t nor_block_index = 0;
-
-#define TCA9539_I2C_ADDR  0x74 // I2C expander address
-#define TCA9539_CFG_PORT0 0x06 
-#define TCA9539_CFG_PORT1 0x07
-#define TCA9539_OUT_PORT0 0x02
-#define TCA9539_OUT_PORT1 0x03
-
-// Register 0x02: Output Port 0 (P00–P07)
-#define P00_D3_EN   (1 << 0)    // Dosimeter 3 Enable
-#define P01_D3_R1   (1 << 1)    // Dosimeter 3 R1
-#define P02_D2_R2   (1 << 2)    // Dosimeter 2 R2
-#define P03_D2_EN   (1 << 3)    // Dosimeter 2 Enable
-#define P04_D2_R1   (1 << 4)    // Dosimeter 2 R1
-#define P05_D1_R2   (1 << 5)    // Dosimeter 1 R2
-#define P06_D1_EN   (1 << 6)    // Dosimeter 1 Enable
-#define P07_D1_R1   (1 << 7)    // Dosimeter 1 R1
-
-// Register 0x03: Output Port 1 (P10–P17)
-#define P10_UNUSED  (1 << 0)    // unused
-#define P11_D5_R1   (1 << 1)    // Dosimeter 5 R1
-#define P12_D5_EN   (1 << 2)    // Dosimeter 5 Enable
-#define P13_D5_R2   (1 << 3)    // Dosimeter 5 R2
-#define P14_D4_R1   (1 << 4)    // Dosimeter 4 R1
-#define P15_D4_EN   (1 << 5)    // Dosimeter 4 Enable
-#define P16_D4_R2   (1 << 6)    // Dosimeter 4 R2
-#define P17_D3_R2   (1 << 7)    // Dosimeter 3 R2
-
-#define I2C_TIMEOUT_MS    100
+// uint32_t flash_write_offset = 0;
+// // Sample interval (ms) — adjust as needed
+// uint32_t sample_rate_ms = 60000;  // 60 seconds 
+// uint32_t samples_saved = 0;
+radfet_metadata_t radfet_metadata = {
+    .flash_write_offset = 0,
+    .samples_saved = 0,
+    .sample_rate_ms = 60000,  // default
+    .crc16 = 0,
+};
 
 //Helper function to write a value to a register over I2C
 gs_error_t write_tca9539_register(uint8_t reg, uint8_t value) {
@@ -206,7 +184,7 @@ void radfet_disable_all(void) {
     update_io_expander(0, 0);
     // gs_time_sleep_ms(100);  // Optional settle delay
 }
-
+// Helper function to perform cyclic redundancy check 
 uint16_t crc16_ccitt(const void *data, size_t length) {
     const uint8_t *bytes = (const uint8_t *)data;
     uint16_t crc = 0xFFFF;
@@ -221,110 +199,165 @@ uint16_t crc16_ccitt(const void *data, size_t length) {
     }
     return crc;
 }
-
-void test_internal_flash_rw(void) {
-    uint8_t test_value = 0xAB;     // Arbitrary byte to write
-    uint8_t read_value = 0x00;     // Variable to store read-back
-    void *flash_addr = (void *)0x80040000;  // Pick a safe offset in internal flash
-
-    log_info("Writing 0x%02X to internal flash at address %p", test_value, flash_addr);
-
-    gs_error_t res_write = gs_mcu_flash_write_data(flash_addr, &test_value, sizeof(test_value));
-    if (res_write != GS_OK) {
-        log_error("Flash write failed with code %d", res_write);
-        return;
-    }
-
-    gs_error_t res_read = gs_mcu_flash_read_data(&read_value, flash_addr, sizeof(read_value));
-    if (res_read != GS_OK) {
-        log_error("Flash read failed with code %d", res_read);
-        return;
-    }
-
-    log_info("Read back 0x%02X from internal flash at address %p", read_value, flash_addr);
-
-    // Overwrite test
-    test_value = 0xBC;     // Arbitrary byte to write
-    read_value = 0x00; 
-    log_info("Writing 0x%02X to internal flash at address %p", test_value, flash_addr);
-
-    res_write = gs_mcu_flash_write_data(flash_addr, &test_value, sizeof(test_value));
-    if (res_write != GS_OK) {
-        log_error("Flash write failed with code %d", res_write);
-        return;
-    }
-
-    res_read = gs_mcu_flash_read_data(&read_value, flash_addr, sizeof(read_value));
-    if (res_read != GS_OK) {
-        log_error("Flash read failed with code %d", res_read);
-        return;
-    }
-    log_info("Read back 0x%02X from internal flash at address %p", read_value, flash_addr);
-    if (read_value == test_value) {
-        log_info("Flash test PASSED: values match.");
-    } else {
-        log_error("Flash test FAILED: expected 0x%02X, got 0x%02X", test_value, read_value);
-    }
+// Helper function to perform cyclic redundancy check on metadata
+static uint16_t calc_metadata_crc(const radfet_metadata_t *meta) {
+    return crc16_ccitt(meta, sizeof(radfet_metadata_t) - sizeof(meta->crc16));
 }
 
-// Sample interval (ms) — adjust as needed
-uint32_t sample_rate_ms = 60000;  // 60 seconds 
-uint32_t samples_saved = 0;
+// Helper function to load metadata 
+bool radfet_load_metadata(radfet_metadata_t *meta) {
+
+    memset(meta, 0, sizeof(*meta));  
+
+    const void *addr = (void *)RADFET_METADATA_ADDR;
+    log_info("Reading metadata from address: 0x%08lx", (uint32_t)addr);
+
+    gs_error_t err = gs_mcu_flash_read_data(meta, addr, sizeof(*meta));
+    if (err != GS_OK) {
+        log_error("Failed to read metadata from flash (err = %d)", err);
+        return false;
+    }
+    // Check if metadata looks erased (all bytes = 0xFF)
+    bool looks_erased = true;
+    const uint8_t *raw = (const uint8_t *)&meta;
+    for (size_t i = 0; i < METADATA_PKT_SIZE; i++) {
+        if (raw[i] != 0xFF) {
+            looks_erased = false;
+            break;
+        }
+    }
+    if (looks_erased) {
+        log_error("Metadata region appears erased — skipping CRC check.");
+        return false;
+    }
+    log_info("Metadata region not erased");
+    // Validate CRC
+    uint16_t expected = meta->crc16;
+    meta->crc16 = 0;
+    uint16_t actual = calc_metadata_crc(meta);
+
+    log_info("Read metadata: offset=%" PRIu32 ", count=%" PRIu32 ", rate=%" PRIu32 ", expected_crc=0x%04X, actual_crc=0x%04X",
+             meta->flash_write_offset, meta->samples_saved, meta->sample_rate_ms, expected, actual);
+
+    bool valid = (expected == actual) &&
+                 meta->flash_write_offset < RADFET_FLASH_SIZE &&
+                 (meta->flash_write_offset % PKT_SIZE) == 0;
+
+    if (valid) {
+        radfet_metadata = *meta;
+        
+    } 
+    return valid;
+}
+// Helper function to save metadata
+void radfet_save_metadata(void) {
+    radfet_metadata_t meta = radfet_metadata;
+    meta.crc16 = 0;
+    meta.crc16 = calc_metadata_crc(&meta);
+    gs_mcu_flash_write_data(RADFET_METADATA_ADDR, (uint8_t *)&meta, METADATA_PKT_SIZE);
+}
+
+// Helper function to test writing, reading and overwriting internal flash
+void test_internal_flash_rw(void) {
+    uint8_t first_write = 0x55;  // 01010101
+    uint8_t second_write = 0xAA; // 10101010 (would require flipping some 0s back to 1s)
+
+    uint8_t read_value = 0x00;
+    void* addr = RADFET_FLASH_START;
+
+    log_info("=== Internal Flash Overwrite Test ===");
+
+    // Step 2: Write first value (0x55)
+    log_info("Writing 0x%02X to flash at %p", first_write, addr);
+    if (gs_mcu_flash_write_data(addr, &first_write, 1) != GS_OK) {
+        log_error("First flash write failed");
+        return;
+    }
+
+    gs_mcu_flash_read_data(&read_value, addr, 1);
+    log_info("Read back 0x%02X", read_value);
+    if (read_value != first_write) {
+        log_error("Mismatch after first write");
+        return;
+    }
+
+    // Step 3: Write second value (0xAA) without erase
+    log_info("Attempting overwrite: writing 0x%02X to flash at %p", second_write, addr);
+    if (gs_mcu_flash_write_data(addr, &second_write, 1) != GS_OK) {
+        log_error("Second flash write failed");
+        return;
+    }
+
+    gs_mcu_flash_read_data(&read_value, addr, 1);
+    log_info("Read back after overwrite: 0x%02X", read_value);
+    log_info("=== Flash Overwrite Test Complete ===");
+}
 
 // Task that periodically samples RADFETs and stores data
 static void * radfet_poll_task(void * param)
-{
+{   
+    static bool metadata_loaded = false;
     radfet_packet_t pkt;
-
-    // int16_t sensor_mv[NUM_RADFET][RADFET_PER_MODULE]; // index [sensor][R1/R2]
+    if (!metadata_loaded) {
+            if (!radfet_load_metadata(&radfet_metadata)) {
+                log_error("Metadata invalid or not found — initializing defaults");
+                radfet_metadata.flash_write_offset = 0;
+                radfet_metadata.samples_saved = 0;
+                radfet_metadata.sample_rate_ms = 60000;
+                radfet_save_metadata();
+            } else {
+                log_info("Metadata successfully loaded in polling task");
+            }
+            metadata_loaded = true;
+        }
+    
     for (;;) {
         // Touch watchdog to prevent reset.
         // This should be tied into other tasks as well, to ensure everything is running.
         wdt_clear();
-        // if (safe_mode == false){
-            pkt.sample.timestamp = gs_time_rel_ms();
-            log_info("=== RADFET Sample ==="); 
-        
-            // updated loop 
-            for (int r= 0; r < RADFET_PER_MODULE; r++){
-                // enable all sensors and all R
-                radfet_enable_all(r);
-                // poll all adc channels 
-                if (radfet_read_all(&pkt.sample, r) != GS_OK) {
-                    log_error("Failed to read R%d channels", r + 1);
-                }
-                // disable all sensors  
-                radfet_disable_all();
+
+        pkt.sample.timestamp = gs_time_rel_ms();
+        log_info("=== RADFET Sample ==="); 
+    
+        for (int r= 0; r < RADFET_PER_MODULE; r++){
+            // enable all sensors and all R
+            radfet_enable_all(r);
+            // poll all adc channels 
+            if (radfet_read_all(&pkt.sample, r) != GS_OK) {
+                log_error("Failed to read R%d channels", r + 1);
             }
+            // disable all sensors  
+            radfet_disable_all();
+        }
 
-            // Write sample to internal flash with circular buffer behavior
-            if ((flash_write_offset + PKT_SIZE) >= RADFET_FLASH_SIZE) {
-                log_info("Flash offset exceeded — wrapping to beginning");
-                flash_write_offset = 0;
+        // Write sample to internal flash with circular buffer behavior
+        if ((radfet_metadata.flash_write_offset + PKT_SIZE) >= RADFET_FLASH_SIZE) {
+            log_info("Flash offset exceeded size — wrapping to beginning");
+            radfet_metadata.flash_write_offset = 0;
+        }
+
+        void *target_addr = (uint8_t *)RADFET_FLASH_START + radfet_metadata.flash_write_offset;
+
+        log_info("Writing to internal flash: timestamp = %" PRIu32, pkt.sample.timestamp);
+        for (int i = 0; i < NUM_RADFET; i++) {
+            log_info("  D%i R1 = %d mV, R2 = %d mV", i + 1, pkt.sample.adc[i][0], pkt.sample.adc[i][1]);
+        }
+        pkt.crc16 = crc16_ccitt(&pkt, sizeof(pkt) - sizeof(pkt.crc16));
+        gs_error_t err = gs_mcu_flash_write_data(target_addr, &pkt, sizeof(pkt));
+        if (err != GS_OK) {
+            log_error("Failed to write to internal flash: %s", gs_error_string(err));
+        } else {
+            log_info("Sample written to internal flash @ offset %" PRIu32 " (timestamp = %" PRIu32 ")",
+                    radfet_metadata.flash_write_offset, pkt.sample.timestamp);
+            radfet_metadata.flash_write_offset += PKT_SIZE;
+            radfet_metadata.samples_saved++;
+            radfet_save_metadata();
+            // radfet_load_metadata();
             }
-
-            void *target_addr = (uint8_t *)RADFET_FLASH_START + flash_write_offset;
-
-            log_info("Writing to internal flash: timestamp = %" PRIu32, pkt.sample.timestamp);
-            for (int i = 0; i < NUM_RADFET; i++) {
-                log_info("  D%i R1 = %d mV, R2 = %d mV", i + 1, pkt.sample.adc[i][0], pkt.sample.adc[i][1]);
-            }
-
-            pkt.crc16 = crc16_ccitt(&pkt, sizeof(pkt) - sizeof(pkt.crc16));
-
-            gs_error_t err = gs_mcu_flash_write_data(target_addr, &pkt, sizeof(pkt));
-            if (err != GS_OK) {
-                log_error("Failed to write to internal flash: %s", gs_error_string(err));
-            } else {
-                log_info("Sample written to internal flash @ offset %" PRIu32 " (timestamp = %" PRIu32 ")",
-                        flash_write_offset, pkt.sample.timestamp);
-                flash_write_offset += PKT_SIZE;
-                samples_saved++;
-            }
-            log_info("==============================");
-        // }
+           
+        log_info("==============================");
         //delay the task by 60 seconds
-        gs_time_sleep_ms(sample_rate_ms);
+        gs_time_sleep_ms(radfet_metadata.sample_rate_ms);
     }
     // Will never get here
     gs_thread_exit(NULL);
@@ -333,7 +366,8 @@ static void * radfet_poll_task(void * param)
 void radfet_task_init(void)
 {
     // test_internal_flash_rw();
-    // peek 0x80040000 26
+    // peek 0x80040000 26 
+    // peek 0x8007FC00 14
 
     // initialize i2c to i/o converter, set output ports to 0 and set ports to output mode
     tca9539_config();
