@@ -205,47 +205,32 @@ static uint16_t calc_metadata_crc(const radfet_metadata_t *meta) {
 }
 
 // Helper function to load metadata 
-bool radfet_load_metadata(radfet_metadata_t *meta) {
+bool radfet_load_metadata() {
 
-    memset(meta, 0, sizeof(*meta));  
+    radfet_metadata_t meta = radfet_metadata; 
 
     const void *addr = (void *)RADFET_METADATA_ADDR;
     log_info("Reading metadata from address: 0x%08lx", (uint32_t)addr);
 
-    gs_error_t err = gs_mcu_flash_read_data(meta, addr, sizeof(*meta));
+    gs_error_t err = gs_mcu_flash_read_data(&meta, addr, METADATA_PKT_SIZE);
     if (err != GS_OK) {
         log_error("Failed to read metadata from flash (err = %d)", err);
         return false;
     }
-    // Check if metadata looks erased (all bytes = 0xFF)
-    bool looks_erased = true;
-    const uint8_t *raw = (const uint8_t *)&meta;
-    for (size_t i = 0; i < METADATA_PKT_SIZE; i++) {
-        if (raw[i] != 0xFF) {
-            looks_erased = false;
-            break;
-        }
-    }
-    if (looks_erased) {
-        log_info("Metadata region appears erased — skipping CRC check.");
-        return false;
-    }
-    log_info("Metadata region not erased");
     // Validate CRC
-    uint16_t expected = meta->crc16;
-    meta->crc16 = 0;
-    uint16_t actual = calc_metadata_crc(meta);
+    uint16_t expected = meta.crc16;
+    meta.crc16 = 0;
+    uint16_t actual = calc_metadata_crc(&meta);
 
     log_info("Read metadata: offset=%" PRIu32 ", count=%" PRIu32 ", rate=%" PRIu32 ", expected_crc=0x%04X, actual_crc=0x%04X",
-             meta->flash_write_offset, meta->samples_saved, meta->sample_rate_ms, expected, actual);
+             meta.flash_write_offset, meta.samples_saved, meta.sample_rate_ms, expected, actual);
 
     bool valid = (expected == actual) &&
-                 meta->flash_write_offset < RADFET_FLASH_SIZE &&
-                 (meta->flash_write_offset % PKT_SIZE) == 0;
+                 meta.flash_write_offset < RADFET_FLASH_SIZE &&
+                 (meta.flash_write_offset % PKT_SIZE) == 0;
 
     if (valid) {
-        radfet_metadata = *meta;
-        
+        radfet_metadata = meta;
     } 
     return valid;
 }
@@ -260,14 +245,13 @@ void radfet_save_metadata(void) {
 // Helper function to test writing, reading and overwriting internal flash
 void test_internal_flash_rw(void) {
     uint8_t first_write = 0x55;  // 01010101
-    uint8_t second_write = 0xAA; // 10101010 (would require flipping some 0s back to 1s)
+    uint8_t second_write = 0xAA; // 10101010 
 
     uint8_t read_value = 0x00;
     void* addr = RADFET_FLASH_START;
 
     log_info("=== Internal Flash Overwrite Test ===");
 
-    // Step 2: Write first value (0x55)
     log_info("Writing 0x%02X to flash at %p", first_write, addr);
     if (gs_mcu_flash_write_data(addr, &first_write, 1) != GS_OK) {
         log_error("First flash write failed");
@@ -281,7 +265,6 @@ void test_internal_flash_rw(void) {
         return;
     }
 
-    // Step 3: Write second value (0xAA) without erase
     log_info("Attempting overwrite: writing 0x%02X to flash at %p", second_write, addr);
     if (gs_mcu_flash_write_data(addr, &second_write, 1) != GS_OK) {
         log_error("Second flash write failed");
@@ -299,7 +282,7 @@ static void * radfet_poll_task(void * param)
     static bool metadata_loaded = false;
     radfet_packet_t pkt;
     if (!metadata_loaded) {
-            if (!radfet_load_metadata(&radfet_metadata)) {
+            if (!radfet_load_metadata()) {
                 log_info("Metadata invalid or not found — initializing defaults");
                 radfet_metadata.flash_write_offset = 0;
                 radfet_metadata.samples_saved = 0;
