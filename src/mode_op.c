@@ -28,19 +28,9 @@
 
 #define USART1 1
 #define STX 0x02
-#define ACK 0x08
-// #define ETX 0x03
-// #define SAFE 0x04
-// #define IDLE 0x05
+#define ETX 0x03
 #define NUM_SAMPLES_TO_SEND 60 * 24 * 5
 #define CHUNK_SIZE 100
-// #define MAX_TRANSMISSION_MS 10000  // 10 seconds
- 
-// static const gs_vmem_t *fram = NULL;
-// uint32_t fram_write_offset = 0;
-// bool safe_mode = false; 
-
-
 
 static void * task_mode_op(void * param)
 {
@@ -126,16 +116,6 @@ static void * task_mode_op(void * param)
                     uint32_t total_elapsed = gs_time_diff_ms(start_time, gs_time_rel_ms());
                     log_info("Downlink completed in %u ms", (unsigned int)total_elapsed);
                     break;
-                // if received byte is (safe mode)
-                // case SAFE:
-                //     // put radfet data collection task to sleep
-                //     safe_mode = true;
-                //     log_info("Safe Mode: Radfet Data Collection Paused");
-                //     break;
-                // case IDLE:
-                //     safe_mode = false;
-                //     log_info("Idle Mode: Radfet Data Collection Resumed");
-                //     break;
             }
         } else if (err == GS_ERROR_TIMEOUT) {
             // log_info("UART1 read timeout");

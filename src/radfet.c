@@ -195,7 +195,9 @@ void radfet_enable_all(int r) {
     } else {
         log_error("Failed to read OUT_PORT1: %s", gs_error_string(err));
     }
-    gs_time_sleep_ms(25);  // Allow voltages to settle
+    //25 ms based on Varadis data sheets
+    //200 ms based on email correspondence with Varadis 
+    gs_time_sleep_ms(200);  // Allow voltages to settle
 }
 
 // helper function to disable all the sensors
@@ -241,6 +243,23 @@ void test_internal_flash_rw(void) {
 
     log_info("Read back 0x%02X from internal flash at address %p", read_value, flash_addr);
 
+    // Overwrite test
+    test_value = 0xBC;     // Arbitrary byte to write
+    read_value = 0x00; 
+    log_info("Writing 0x%02X to internal flash at address %p", test_value, flash_addr);
+
+    res_write = gs_mcu_flash_write_data(flash_addr, &test_value, sizeof(test_value));
+    if (res_write != GS_OK) {
+        log_error("Flash write failed with code %d", res_write);
+        return;
+    }
+
+    res_read = gs_mcu_flash_read_data(&read_value, flash_addr, sizeof(read_value));
+    if (res_read != GS_OK) {
+        log_error("Flash read failed with code %d", res_read);
+        return;
+    }
+    log_info("Read back 0x%02X from internal flash at address %p", read_value, flash_addr);
     if (read_value == test_value) {
         log_info("Flash test PASSED: values match.");
     } else {
