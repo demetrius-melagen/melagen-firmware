@@ -2,6 +2,7 @@
 #define RADFET_H
 
 #include <stdint.h>
+#include <avr32/io.h>
 
 #define TCA9539_I2C_ADDR  0x74 // I2C expander address
 #define TCA9539_CFG_PORT0 0x06 // I2C expander configuration port 0
@@ -36,11 +37,10 @@
 #define PKT_SIZE sizeof(radfet_packet_t)    
 #define METADATA_PKT_SIZE sizeof(radfet_metadata_t)
 
-#define RADFET_METADATA_SIZE 0x00000400             
 #define RADFET_FLASH_START ((void *) 0x80040000) 
-#define RADFET_FLASH_END   ((void *) (0x80080000 - RADFET_METADATA_SIZE))
+#define RADFET_FLASH_END   ((void *) 0x80080000)
 #define RADFET_FLASH_SIZE  ((uintptr_t)RADFET_FLASH_END - (uintptr_t)RADFET_FLASH_START)
-#define RADFET_METADATA_ADDR ((void *) (0x80080000 - RADFET_METADATA_SIZE)) 
+#define RADFET_METADATA_ADDR ((void *) (0x80080000 + AVR32_FLASH_PAGE_SIZE)) 
 
 typedef struct __attribute__((packed)) {
     uint32_t flash_write_offset;  //address to save and read from

@@ -303,10 +303,8 @@ static void * radfet_poll_task(void * param)
         // Touch watchdog to prevent reset.
         // This should be tied into other tasks as well, to ensure everything is running.
         wdt_clear();
-
         pkt.sample.timestamp = gs_time_rel_ms();
         log_info("=== RADFET Sample ==="); 
-    
         for (int r= 0; r < RADFET_PER_MODULE; r++){
             // enable all sensors and all R
             err = radfet_enable_all(r);
@@ -317,7 +315,6 @@ static void * radfet_poll_task(void * param)
             } else {
                 log_error("Failed to enable sensors: %s", gs_error_string(err));
             }
-            
             // disable all sensors  
             err = radfet_disable_all();
             if (err != GS_OK){
@@ -363,8 +360,8 @@ static void * radfet_poll_task(void * param)
 void radfet_task_init(void)
 {
     // test_internal_flash_rw();
-    // peek 0x80040000 26 
-    // peek 0x8007FC00 14
+    // peek 0x80040000 52 
+    // peek 0x80080200 14
 
     // initialize i2c to i/o converter, set output ports to 0 and set ports to output mode
     if (tca9539_config() != GS_OK){
