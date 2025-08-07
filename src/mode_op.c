@@ -29,7 +29,7 @@
 #define USART1 1
 #define STX 0x02
 #define ETX 0x03
-#define NUM_SAMPLES_TO_SEND 60 * 24 * 5
+#define NUM_SAMPLES_TO_SEND 60 * 24 * 5 // 5 days worth of data 
 #define CHUNK_SIZE 100
 
 static void * task_mode_op(void * param)
@@ -107,10 +107,10 @@ static void * task_mode_op(void * param)
                     break;
                 case ETX:
                     log_info("Data transmission successful!");
+                    //save amount of successful transmissions to metadata?
                     break;
             }
         } else if (err == GS_ERROR_TIMEOUT) {
-            // log_info("UART1 read timeout");
         } else {
             log_error("UART1 read failed with error: %d", err);
         }
@@ -129,11 +129,11 @@ void mode_op_init(void)
         log_error("USART1 initialization failed: %s (code: %d)", gs_error_string(err), err);
     }
 
-    gs_error_t thread_err = gs_thread_create("Operation Modes", task_mode_op, NULL,
+    err = gs_thread_create("Operation Modes", task_mode_op, NULL,
                      gs_a3200_get_default_stack_size(), GS_THREAD_PRIORITY_NORMAL, 0, NULL);
 
-    if (thread_err != GS_OK) {
-        log_error("Operation Modes thread creation FAILED: %s (%d)", gs_error_string(thread_err), thread_err);
+    if (err != GS_OK) {
+        log_error("Operation Modes thread creation FAILED: %s (%d)", gs_error_string(err), err);
     } else {
         log_info("Operation Modes thread successfully created");
     }

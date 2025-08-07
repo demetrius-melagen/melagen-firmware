@@ -31,14 +31,10 @@ static const uint8_t radfet_channels[NUM_RADFET] = {
     0   // D5 → AD0
 }; 
 
-// uint32_t flash_write_offset = 0;
-// // Sample interval (ms) — adjust as needed
-// uint32_t sample_rate_ms = 60000;  // 60 seconds 
-// uint32_t samples_saved = 0;
 radfet_metadata_t radfet_metadata = {
     .flash_write_offset = 0,
     .samples_saved = 0,
-    .sample_rate_ms = 60000,  // default
+    .sample_rate_ms = 60000,  // default sample rate
     .crc16 = 0,
 };
 
@@ -52,7 +48,6 @@ gs_error_t write_tca9539_register(uint8_t reg, uint8_t value) {
 void update_io_expander(uint8_t port0, uint8_t port1) {
     write_tca9539_register(TCA9539_OUT_PORT0, port0);
     write_tca9539_register(TCA9539_OUT_PORT1, port1);
-    // gs_time_sleep_ms(10);  // optional settle time
 }
 
 //Helper function to read from register over I2C
@@ -142,7 +137,7 @@ void radfet_enable_all(int r) {
     // Enable CTRL for all 5 dosimeters
     port0 |= (P00_D3_EN | P06_D1_EN | P03_D2_EN );
     port1 |= (P15_D4_EN | P12_D5_EN);
-    // make sure that if the sensor is enabled, at least r1 or r2 are enabled to prevent 12V spike
+    // Make sure that if the sensor is enabled, at least r1 or r2 are enabled to prevent 12V spike
     // Depending on R1 or R2, enable the right control lines
     if (r == 0) {
         // R1 enable for all
@@ -153,7 +148,7 @@ void radfet_enable_all(int r) {
         port0 |= (P05_D1_R2 | P02_D2_R2);
         port1 |= (P17_D3_R2 | P16_D4_R2 | P13_D5_R2);
     } else {
-        log_error("Invalid RADFET mode: %d (expected 0 for R1, 1 for R2)", r);
+        log_error("Invalid RADFET mode: %d", r);
         return;
     }
     // Send I/O update
@@ -182,7 +177,6 @@ void radfet_enable_all(int r) {
 void radfet_disable_all(void) {
     // Set all control lines to LOW (inactive)
     update_io_expander(0, 0);
-    // gs_time_sleep_ms(100);  // Optional settle delay
 }
 // Helper function to perform cyclic redundancy check 
 uint16_t crc16_ccitt(const void *data, size_t length) {
@@ -228,10 +222,7 @@ bool radfet_load_metadata() {
     bool valid = (expected == actual) &&
                  meta.flash_write_offset < RADFET_FLASH_SIZE &&
                  (meta.flash_write_offset % PKT_SIZE) == 0;
-
-    if (valid) {
-        radfet_metadata = meta;
-    } 
+    if (valid) { radfet_metadata = meta; } 
     return valid;
 }
 // Helper function to save metadata
@@ -279,20 +270,18 @@ void test_internal_flash_rw(void) {
 // Task that periodically samples RADFETs and stores data
 static void * radfet_poll_task(void * param)
 {   
-    static bool metadata_loaded = false;
+
     radfet_packet_t pkt;
-    if (!metadata_loaded) {
-            if (!radfet_load_metadata()) {
-                log_info("Metadata invalid or not found — initializing defaults");
-                radfet_metadata.flash_write_offset = 0;
-                radfet_metadata.samples_saved = 0;
-                radfet_metadata.sample_rate_ms = 60000;
-                radfet_save_metadata();
-            } else {
-                log_info("Metadata successfully loaded in polling task");
-            }
-            metadata_loaded = true;
-        }
+    if (!radfet_load_metadata()) {
+        log_info("Metadata invalid or not found — initializing defaults");
+        radfet_metadata.flash_write_offset = 0;
+        radfet_metadata.samples_saved = 0;
+        radfet_metadata.sample_rate_ms = 60000;
+        radfet_save_metadata();
+    } else {
+        log_info("Metadata successfully loaded in polling task");
+    }
+     
     
     for (;;) {
         // Touch watchdog to prevent reset.
@@ -335,11 +324,10 @@ static void * radfet_poll_task(void * param)
             radfet_metadata.flash_write_offset += PKT_SIZE;
             radfet_metadata.samples_saved++;
             radfet_save_metadata();
-            // radfet_load_metadata();
             }
            
         log_info("==============================");
-        //delay the task by 60 seconds
+        //Delay the task by sample rate
         gs_time_sleep_ms(radfet_metadata.sample_rate_ms);
     }
     // Will never get here
