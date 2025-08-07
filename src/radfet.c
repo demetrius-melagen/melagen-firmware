@@ -45,9 +45,11 @@ gs_error_t write_tca9539_register(uint8_t reg, uint8_t value) {
 }
 
 //Helper function to write to both ports on tca9539
-void update_io_expander(uint8_t port0, uint8_t port1) {
-    write_tca9539_register(TCA9539_OUT_PORT0, port0);
-    write_tca9539_register(TCA9539_OUT_PORT1, port1);
+gs_error_t update_io_expander(uint8_t port0, uint8_t port1) {
+    gs_error_t err;
+    err = write_tca9539_register(TCA9539_OUT_PORT0, port0);
+    err = write_tca9539_register(TCA9539_OUT_PORT1, port1);
+    return err;
 }
 
 //Helper function to read from register over I2C
@@ -56,27 +58,27 @@ gs_error_t read_tca9539_register(uint8_t reg, uint8_t *value) {
 }
 
 // Helper function to initialize i2c to i/o converter
-void tca9539_config(void) {
+gs_error_t tca9539_config(void) {
     gs_error_t err;
     err = write_tca9539_register(TCA9539_OUT_PORT0, 0x00);  
     if (err != GS_OK) {
         log_error("Failed to write OUT_PORT0: %s", gs_error_string(err));
-        return;
+        return err;
     }
     err = write_tca9539_register(TCA9539_OUT_PORT1, 0x00);  
     if (err != GS_OK) {
         log_error("Failed to write OUT_PORT1: %s", gs_error_string(err));
-        return;
+        return err;
     }
     err = write_tca9539_register(TCA9539_CFG_PORT0, 0x00);
     if (err != GS_OK) {
         log_error("Failed to write CFG_PORT0: %s", gs_error_string(err));
-        return;
+        return err;
     }
     err = write_tca9539_register(TCA9539_CFG_PORT1, 0x00);
     if (err != GS_OK) {
         log_error("Failed to write CFG_PORT1: %s", gs_error_string(err));
-        return;
+        return err;
     }
     uint8_t cfg0, cfg1;
     err = read_tca9539_register(TCA9539_CFG_PORT0, &cfg0);
@@ -84,6 +86,7 @@ void tca9539_config(void) {
         log_info("CFG_PO}RT0 = 0x%02X → %s", cfg0, (cfg0 == 0x00) ? "OK (all outputs)" : "NOT OK");
     }else{
         log_error("Failed to read CFG_PORT0: %s", gs_error_string(err));
+        return err;
     }  
     err = read_tca9539_register(TCA9539_CFG_PORT1, &cfg1);
     if (err == GS_OK){
@@ -91,6 +94,7 @@ void tca9539_config(void) {
     }
     else{
         log_error("Failed to read CFG_PORT1: %s", gs_error_string(err));
+        return err;
     }
     uint8_t out0, out1;
     err = read_tca9539_register(TCA9539_OUT_PORT0, &out0);
@@ -98,14 +102,16 @@ void tca9539_config(void) {
         log_info("OUT_PORT0 = 0x%02X", out0);
     } else{
         log_error("Failed to read OUT_PORT0: %s", gs_error_string(err));
+        return err;
     }
     err = read_tca9539_register(TCA9539_OUT_PORT1, &out1);
     if (err == GS_OK){
         log_info("OUT_PORT1 = 0x%02X", out1);
     } else {
         log_error("Failed to read OUT_PORT1: %s", gs_error_string(err));
+        return err;
     }
-
+    return err;
 }
 
 //ADC Read All Helper Function
@@ -130,7 +136,7 @@ gs_error_t radfet_read_all(radfet_sample_t *sample, int r){
 }
 
 // helper function to enable all the sensors based on r1 or r2
-void radfet_enable_all(int r) {
+gs_error_t radfet_enable_all(int r) {
     // Start with all lines inactive (low)
     uint8_t port0 = 0;
     uint8_t port1 = 0;
@@ -149,34 +155,40 @@ void radfet_enable_all(int r) {
         port1 |= (P17_D3_R2 | P16_D4_R2 | P13_D5_R2);
     } else {
         log_error("Invalid RADFET mode: %d", r);
-        return;
+        return GS_ERROR_ARG;
     }
-    // Send I/O update
-    update_io_expander(port0, port1);
-
     gs_error_t err;
+    // Send I/O update
+    err = update_io_expander(port0, port1);
+    if (err != GS_OK){
+        log_error("Failed to update I2C I/O Expander: %s", gs_error_string(err));
+    }
     uint8_t out0, out1;
     err = read_tca9539_register(TCA9539_OUT_PORT0, &out0);
     if (err == GS_OK){
         log_info("OUT_PORT0 = 0x%02X", out0);
     } else{
         log_error("Failed to read OUT_PORT0: %s", gs_error_string(err));
+        return err;
     }
     err = read_tca9539_register(TCA9539_OUT_PORT1, &out1);
     if (err == GS_OK){
         log_info("OUT_PORT1 = 0x%02X", out1);
     } else {
         log_error("Failed to read OUT_PORT1: %s", gs_error_string(err));
+        return err;
     }
     //25 ms based on Varadis data sheets
     //200 ms based on email correspondence with Varadis 
     gs_time_sleep_ms(200);  // Allow voltages to settle
+    return err;
 }
 
 // helper function to disable all the sensors
-void radfet_disable_all(void) {
+gs_error_t radfet_disable_all(void) {
     // Set all control lines to LOW (inactive)
-    update_io_expander(0, 0);
+    gs_error_t err = update_io_expander(0, 0);
+    return err;
 }
 // Helper function to perform cyclic redundancy check 
 uint16_t crc16_ccitt(const void *data, size_t length) {
@@ -226,11 +238,12 @@ bool radfet_load_metadata() {
     return valid;
 }
 // Helper function to save metadata
-void radfet_save_metadata(void) {
+gs_error_t radfet_save_metadata(void) {
     radfet_metadata_t meta = radfet_metadata;
     meta.crc16 = 0;
     meta.crc16 = calc_metadata_crc(&meta);
-    gs_mcu_flash_write_data(RADFET_METADATA_ADDR, (uint8_t *)&meta, METADATA_PKT_SIZE);
+    gs_error_t err = gs_mcu_flash_write_data(RADFET_METADATA_ADDR, (uint8_t *)&meta, METADATA_PKT_SIZE);
+    return err;
 }
 
 // Helper function to test writing, reading and overwriting internal flash
@@ -270,14 +283,17 @@ void test_internal_flash_rw(void) {
 // Task that periodically samples RADFETs and stores data
 static void * radfet_poll_task(void * param)
 {   
-
+    gs_error_t err;
     radfet_packet_t pkt;
     if (!radfet_load_metadata()) {
         log_info("Metadata invalid or not found — initializing defaults");
         radfet_metadata.flash_write_offset = 0;
         radfet_metadata.samples_saved = 0;
         radfet_metadata.sample_rate_ms = 60000;
-        radfet_save_metadata();
+        err = radfet_save_metadata();
+        if (err != GS_OK){
+                log_error("Failed to save metadata @ addr from address: 0x%08lx", (uint32_t)RADFET_METADATA_ADDR);
+            }
     } else {
         log_info("Metadata successfully loaded in polling task");
     }
@@ -293,13 +309,20 @@ static void * radfet_poll_task(void * param)
     
         for (int r= 0; r < RADFET_PER_MODULE; r++){
             // enable all sensors and all R
-            radfet_enable_all(r);
-            // poll all adc channels 
-            if (radfet_read_all(&pkt.sample, r) != GS_OK) {
-                log_error("Failed to read R%d channels", r + 1);
+            err = radfet_enable_all(r);
+            if (err == GS_OK){// poll all adc channels 
+                if (radfet_read_all(&pkt.sample, r) != GS_OK) {
+                    log_error("Failed to read R%d channels", r + 1);
+                }
+            } else {
+                log_error("Failed to enable sensors: %s", gs_error_string(err));
             }
+            
             // disable all sensors  
-            radfet_disable_all();
+            err = radfet_disable_all();
+            if (err != GS_OK){
+                log_error("Failed to disable sensors: %s", gs_error_string(err));
+            }
         }
 
         // Write sample to internal flash with circular buffer behavior
@@ -315,7 +338,7 @@ static void * radfet_poll_task(void * param)
             log_info("  D%i R1 = %d mV, R2 = %d mV", i + 1, pkt.sample.adc[i][0], pkt.sample.adc[i][1]);
         }
         pkt.crc16 = crc16_ccitt(&pkt, sizeof(pkt) - sizeof(pkt.crc16));
-        gs_error_t err = gs_mcu_flash_write_data(target_addr, &pkt, sizeof(pkt));
+        err = gs_mcu_flash_write_data(target_addr, &pkt, sizeof(pkt));
         if (err != GS_OK) {
             log_error("Failed to write to internal flash: %s", gs_error_string(err));
         } else {
@@ -323,8 +346,11 @@ static void * radfet_poll_task(void * param)
                     radfet_metadata.flash_write_offset, pkt.sample.timestamp);
             radfet_metadata.flash_write_offset += PKT_SIZE;
             radfet_metadata.samples_saved++;
-            radfet_save_metadata();
+            err = radfet_save_metadata();
+            if (err != GS_OK){
+                log_error("Failed to save metadata: %s", gs_error_string(err));
             }
+        }
            
         log_info("==============================");
         //Delay the task by sample rate
@@ -341,6 +367,8 @@ void radfet_task_init(void)
     // peek 0x8007FC00 14
 
     // initialize i2c to i/o converter, set output ports to 0 and set ports to output mode
-    tca9539_config();
+    if (tca9539_config() != GS_OK){
+        log_error("Failed to initialize I2C I/O Converter");
+    }
     gs_thread_create("radfet_poll", radfet_poll_task, NULL, 3000, GS_THREAD_PRIORITY_LOW, 0, NULL);
 }

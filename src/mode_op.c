@@ -34,15 +34,17 @@
 
 static void * task_mode_op(void * param)
 {
+
     log_info("UART test task started!");
-    // static radfet_packet_t packets[CHUNK_SIZE];
+    uint8_t incoming_byte;
+    uint32_t num_to_send;
+    gs_error_t err;
     for (;;) {
         // Touch watchdog to prevent reset.
         // This should be tied into other tasks as well, to ensure everything is running.
         wdt_clear();
-        uint8_t incoming_byte;
-        uint32_t num_to_send;
-        gs_error_t err = gs_uart_read(USART1, 1000, &incoming_byte);  
+        
+        err = gs_uart_read(USART1, 1000, &incoming_byte);  
         if (err == GS_OK) {
             log_info("Received byte on USART1: 0x%02X", incoming_byte);
             // state machine with switch case
@@ -73,9 +75,9 @@ static void * task_mode_op(void * param)
 
                             void *read_addr = (uint8_t *)RADFET_FLASH_START + offset;
                             radfet_packet_t temp_pkt;
-                            gs_error_t rerr = gs_mcu_flash_read_data(&temp_pkt, read_addr, sizeof(radfet_packet_t));
-                            if (rerr != GS_OK) {
-                                log_error("Flash read failed at offset %" PRId32 ": %s", offset, gs_error_string(rerr));
+                            err = gs_mcu_flash_read_data(&temp_pkt, read_addr, sizeof(radfet_packet_t));
+                            if (err != GS_OK) {
+                                log_error("Flash read failed at offset %" PRId32 ": %s", offset, gs_error_string(err));
                                 continue;
                             }
                             uint16_t crc = crc16_ccitt(&temp_pkt, sizeof(radfet_packet_t) - sizeof(temp_pkt.crc16));
@@ -87,18 +89,16 @@ static void * task_mode_op(void * param)
                         }
                         size_t bytes_to_send = valid_sample_count * sizeof(radfet_packet_t);
                         size_t bytes_sent = 0;
-                        gs_error_t tx_err = gs_uart_write_buffer(USART1, 1000, (uint8_t *)packets, bytes_to_send, &bytes_sent);
+                        err = gs_uart_write_buffer(USART1, 1000, (uint8_t *)packets, bytes_to_send, &bytes_sent);
                         free(packets);
-
-                        // now = gs_time_rel_ms();  // re-check after sending
-                        if (tx_err == GS_OK && bytes_sent == bytes_to_send) {
+                        if (err == GS_OK && bytes_sent == bytes_to_send) {
                             if (bytes_sent > 0){
                                 log_info("Sent chunk %d: %u samples (%u bytes)", 
                                 chunk / CHUNK_SIZE, (unsigned int)valid_sample_count, (unsigned int)bytes_sent);
                             }
                         } else {
-                            log_error("Failed to send chunk %d: error %d, sent %u of %u bytes",
-                                chunk / CHUNK_SIZE, tx_err, (unsigned int)bytes_sent, (unsigned int)bytes_to_send);
+                            log_error("Failed to send chunk %d: error %s, sent %u of %u bytes",
+                                chunk / CHUNK_SIZE, gs_error_string(err), (unsigned int)bytes_sent, (unsigned int)bytes_to_send);
                             break;
                         }
                     }
