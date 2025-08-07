@@ -60,7 +60,7 @@ static void * task_mode_op(void * param)
                         // Check elapsed time before processing chunk
                         // uint32_t now = gs_time_rel_ms();
                         uint32_t samples_this_chunk = (num_to_send - chunk >= CHUNK_SIZE) ? CHUNK_SIZE : (num_to_send - chunk);
-                        radfet_packet_t *packets = malloc(samples_this_chunk * sizeof(radfet_packet_t));
+                        radfet_packet_t *packets = malloc(samples_this_chunk * PKT_SIZE);
                         
                         if (!packets) {
                             log_error("Failed to allocate memory for %u packets", (unsigned int)samples_this_chunk);
@@ -75,19 +75,19 @@ static void * task_mode_op(void * param)
 
                             void *read_addr = (uint8_t *)RADFET_FLASH_START + offset;
                             radfet_packet_t temp_pkt;
-                            err = gs_mcu_flash_read_data(&temp_pkt, read_addr, sizeof(radfet_packet_t));
+                            err = gs_mcu_flash_read_data(&temp_pkt, read_addr, PKT_SIZE);
                             if (err != GS_OK) {
                                 log_error("Flash read failed at offset %" PRId32 ": %s", offset, gs_error_string(err));
                                 continue;
                             }
-                            uint16_t crc = crc16_ccitt(&temp_pkt, sizeof(radfet_packet_t) - sizeof(temp_pkt.crc16));
+                            uint16_t crc = crc16_ccitt(&temp_pkt, PKT_SIZE - sizeof(temp_pkt.crc16));
                             if (crc != temp_pkt.crc16) {
                                 log_error("Skipping invalid packet @ offset %" PRId32 " (CRC mismatch)", offset);
                                 continue;
                             }
                             packets[valid_sample_count++] = temp_pkt;
                         }
-                        size_t bytes_to_send = valid_sample_count * sizeof(radfet_packet_t);
+                        size_t bytes_to_send = valid_sample_count * PKT_SIZE;
                         size_t bytes_sent = 0;
                         err = gs_uart_write_buffer(USART1, 1000, (uint8_t *)packets, bytes_to_send, &bytes_sent);
                         free(packets);
