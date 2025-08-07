@@ -29,13 +29,12 @@
 #define USART1 1
 #define STX 0x02
 #define ETX 0x03
-#define NUM_SAMPLES_TO_SEND 60 * 24 * 5 // 5 days worth of data 
+#define NUM_SAMPLES_TO_SEND 60 * 24 
 #define CHUNK_SIZE 100
 
 static void * task_mode_op(void * param)
 {
 
-    log_info("UART test task started!");
     uint8_t incoming_byte;
     uint32_t num_to_send;
     gs_error_t err;
@@ -51,59 +50,61 @@ static void * task_mode_op(void * param)
             // if received byte is STX
             switch (incoming_byte){
                 case STX: 
-                    num_to_send = (radfet_metadata.samples_saved < NUM_SAMPLES_TO_SEND) ? radfet_metadata.samples_saved : NUM_SAMPLES_TO_SEND;
-                    log_info("STX received: sending up to %" PRIu32 " samples from internal flash", num_to_send);
-                    uint32_t start_time = gs_time_rel_ms();
+                    if (!radfet_polling){
+                        num_to_send = (radfet_metadata.samples_saved < NUM_SAMPLES_TO_SEND) ? radfet_metadata.samples_saved : NUM_SAMPLES_TO_SEND;
+                        log_info("STX received: sending up to %" PRIu32 " samples from internal flash", num_to_send);
+                        uint32_t start_time = gs_time_rel_ms();
 
-                    for (int chunk = 0; chunk < NUM_SAMPLES_TO_SEND; chunk += CHUNK_SIZE) {
-                        wdt_clear(); 
-                        // Check elapsed time before processing chunk
-                        // uint32_t now = gs_time_rel_ms();
-                        uint32_t samples_this_chunk = (num_to_send - chunk >= CHUNK_SIZE) ? CHUNK_SIZE : (num_to_send - chunk);
-                        radfet_packet_t *packets = malloc(samples_this_chunk * PKT_SIZE);
-                        
-                        if (!packets) {
-                            log_error("Failed to allocate memory for %u packets", (unsigned int)samples_this_chunk);
-                            break;
-                        }
-                        int valid_sample_count = 0;
-                        for (uint32_t i = 0; i < (uint32_t)samples_this_chunk; i++) {
-                            uint32_t packet_index = chunk + i;
-                            if (packet_index >= radfet_metadata.samples_saved) continue;
-                            int32_t offset = (int32_t)radfet_metadata.flash_write_offset - ((radfet_metadata.samples_saved - packet_index) * PKT_SIZE);
-                            if (offset < 0) offset += RADFET_FLASH_SIZE - (RADFET_FLASH_SIZE % PKT_SIZE);
+                        for (int chunk = 0; chunk < NUM_SAMPLES_TO_SEND; chunk += CHUNK_SIZE) {
+                            wdt_clear(); 
+                            // Check elapsed time before processing chunk
+                            // uint32_t now = gs_time_rel_ms();
+                            uint32_t samples_this_chunk = (num_to_send - chunk >= CHUNK_SIZE) ? CHUNK_SIZE : (num_to_send - chunk);
+                            radfet_packet_t *packets = malloc(samples_this_chunk * PKT_SIZE);
+                            
+                            if (!packets) {
+                                log_error("Failed to allocate memory for %u packets", (unsigned int)samples_this_chunk);
+                                break;
+                            }
+                            int valid_sample_count = 0;
+                            for (uint32_t i = 0; i < (uint32_t)samples_this_chunk; i++) {
+                                uint32_t packet_index = chunk + i;
+                                if (packet_index >= radfet_metadata.samples_saved) continue;
+                                int32_t offset = (int32_t)radfet_metadata.flash_write_offset - ((radfet_metadata.samples_saved - packet_index) * PKT_SIZE);
+                                if (offset < 0) offset += RADFET_FLASH_SIZE - (RADFET_FLASH_SIZE % PKT_SIZE);
 
-                            void *read_addr = (uint8_t *)RADFET_FLASH_START + offset;
-                            radfet_packet_t temp_pkt;
-                            err = gs_mcu_flash_read_data(&temp_pkt, read_addr, PKT_SIZE);
-                            if (err != GS_OK) {
-                                log_error("Flash read failed at offset %" PRId32 ": %s", offset, gs_error_string(err));
-                                continue;
+                                void *read_addr = (uint8_t *)RADFET_FLASH_START + offset;
+                                radfet_packet_t temp_pkt;
+                                err = gs_mcu_flash_read_data(&temp_pkt, read_addr, PKT_SIZE);
+                                if (err != GS_OK) {
+                                    log_error("Flash read failed at offset %" PRId32 ": %s", offset, gs_error_string(err));
+                                    continue;
+                                }
+                                uint16_t crc = crc16_ccitt(&temp_pkt, PKT_SIZE - sizeof(temp_pkt.crc16));
+                                if (crc != temp_pkt.crc16) {
+                                    log_error("Skipping invalid packet @ offset %" PRId32 " (CRC mismatch)", offset);
+                                    continue;
+                                }
+                                packets[valid_sample_count++] = temp_pkt;
                             }
-                            uint16_t crc = crc16_ccitt(&temp_pkt, PKT_SIZE - sizeof(temp_pkt.crc16));
-                            if (crc != temp_pkt.crc16) {
-                                log_error("Skipping invalid packet @ offset %" PRId32 " (CRC mismatch)", offset);
-                                continue;
+                            size_t bytes_to_send = valid_sample_count * PKT_SIZE;
+                            size_t bytes_sent = 0;
+                            err = gs_uart_write_buffer(USART1, 1000, (uint8_t *)packets, bytes_to_send, &bytes_sent);
+                            free(packets);
+                            if (err == GS_OK && bytes_sent == bytes_to_send) {
+                                if (bytes_sent > 0){
+                                    log_info("Sent chunk %d: %u samples (%u bytes)", 
+                                    chunk / CHUNK_SIZE, (unsigned int)valid_sample_count, (unsigned int)bytes_sent);
+                                }
+                            } else {
+                                log_error("Failed to send chunk %d: error %s, sent %u of %u bytes",
+                                    chunk / CHUNK_SIZE, gs_error_string(err), (unsigned int)bytes_sent, (unsigned int)bytes_to_send);
+                                break;
                             }
-                            packets[valid_sample_count++] = temp_pkt;
                         }
-                        size_t bytes_to_send = valid_sample_count * PKT_SIZE;
-                        size_t bytes_sent = 0;
-                        err = gs_uart_write_buffer(USART1, 1000, (uint8_t *)packets, bytes_to_send, &bytes_sent);
-                        free(packets);
-                        if (err == GS_OK && bytes_sent == bytes_to_send) {
-                            if (bytes_sent > 0){
-                                log_info("Sent chunk %d: %u samples (%u bytes)", 
-                                chunk / CHUNK_SIZE, (unsigned int)valid_sample_count, (unsigned int)bytes_sent);
-                            }
-                        } else {
-                            log_error("Failed to send chunk %d: error %s, sent %u of %u bytes",
-                                chunk / CHUNK_SIZE, gs_error_string(err), (unsigned int)bytes_sent, (unsigned int)bytes_to_send);
-                            break;
-                        }
+                        uint32_t total_elapsed = gs_time_diff_ms(start_time, gs_time_rel_ms());
+                        log_info("Downlink completed in %u ms", (unsigned int)total_elapsed);
                     }
-                    uint32_t total_elapsed = gs_time_diff_ms(start_time, gs_time_rel_ms());
-                    log_info("Downlink completed in %u ms", (unsigned int)total_elapsed);
                     break;
                 case ETX:
                     log_info("Data transmission successful!");
