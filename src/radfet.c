@@ -30,7 +30,7 @@ static const uint8_t radfet_channels[NUM_RADFET] = {
     4,  // D4 → AD4
     0   // D5 → AD0
 }; 
-
+bool radfet_polling = true;
 radfet_metadata_t radfet_metadata = {
     .flash_write_offset = 0,
     .samples_saved = 0,
@@ -211,7 +211,7 @@ static uint16_t calc_metadata_crc(const radfet_metadata_t *meta) {
 }
 
 // Helper function to load metadata 
-bool radfet_load_metadata() {
+bool radfet_load_metadata(void) {
 
     radfet_metadata_t meta = radfet_metadata; 
 
@@ -303,6 +303,7 @@ static void * radfet_poll_task(void * param)
         // Touch watchdog to prevent reset.
         // This should be tied into other tasks as well, to ensure everything is running.
         wdt_clear();
+        radfet_polling = true;
         pkt.sample.timestamp = gs_time_rel_ms();
         log_info("=== RADFET Sample ==="); 
         for (int r= 0; r < RADFET_PER_MODULE; r++){
@@ -351,6 +352,7 @@ static void * radfet_poll_task(void * param)
            
         log_info("==============================");
         //Delay the task by sample rate
+        radfet_polling = false;
         gs_time_sleep_ms(radfet_metadata.sample_rate_ms);
     }
     // Will never get here

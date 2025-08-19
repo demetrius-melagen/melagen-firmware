@@ -29,8 +29,10 @@
 #define USART1 1
 #define STX 0x02
 #define ETX 0x03
-#define NUM_SAMPLES_TO_SEND 60 * 24 
-#define CHUNK_SIZE 100
+#define NUM_SAMPLES_TO_SEND 60 * 24 * 5
+#define BYTES_TO_SEND (NUM_SAMPLES_TO_SEND * PKT_SIZE)
+// OOX specified 64 bytes to send at a time based on stress testing their rs422 link
+#define BLOCK_SIZE 64
 
 static void * task_mode_op(void * param)
 {
@@ -50,62 +52,118 @@ static void * task_mode_op(void * param)
             // if received byte is STX
             switch (incoming_byte){
                 case STX: 
-                    if (!radfet_polling){
-                        num_to_send = (radfet_metadata.samples_saved < NUM_SAMPLES_TO_SEND) ? radfet_metadata.samples_saved : NUM_SAMPLES_TO_SEND;
+                    // if (!radfet_polling) {
+                        num_to_send = (radfet_metadata.samples_saved < NUM_SAMPLES_TO_SEND)
+                                        ? radfet_metadata.samples_saved
+                                        : NUM_SAMPLES_TO_SEND;
                         log_info("STX received: sending up to %" PRIu32 " samples from internal flash", num_to_send);
                         uint32_t start_time = gs_time_rel_ms();
 
-                        for (int chunk = 0; chunk < NUM_SAMPLES_TO_SEND; chunk += CHUNK_SIZE) {
-                            wdt_clear(); 
-                            // Check elapsed time before processing chunk
-                            // uint32_t now = gs_time_rel_ms();
-                            uint32_t samples_this_chunk = (num_to_send - chunk >= CHUNK_SIZE) ? CHUNK_SIZE : (num_to_send - chunk);
-                            radfet_packet_t *packets = malloc(samples_this_chunk * PKT_SIZE);
-                            
-                            if (!packets) {
-                                log_error("Failed to allocate memory for %u packets", (unsigned int)samples_this_chunk);
-                                break;
-                            }
-                            int valid_sample_count = 0;
-                            for (uint32_t i = 0; i < (uint32_t)samples_this_chunk; i++) {
-                                uint32_t packet_index = chunk + i;
-                                if (packet_index >= radfet_metadata.samples_saved) continue;
-                                int32_t offset = (int32_t)radfet_metadata.flash_write_offset - ((radfet_metadata.samples_saved - packet_index) * PKT_SIZE);
-                                if (offset < 0) offset += RADFET_FLASH_SIZE - (RADFET_FLASH_SIZE % PKT_SIZE);
+                        // --- STREAMING SEND: 64-byte staging buffer, no large malloc ---
+                        uint8_t txbuf[BLOCK_SIZE];
+                        size_t buf_used = 0;              // bytes currently buffered (<= BLOCK_SIZE)
+                        size_t total_bytes_planned = 0;   // sum of valid packets * PKT_SIZE
+                        size_t total_bytes_sent = 0;
+                        int    valid_sample_count = 0;
 
-                                void *read_addr = (uint8_t *)RADFET_FLASH_START + offset;
-                                radfet_packet_t temp_pkt;
-                                err = gs_mcu_flash_read_data(&temp_pkt, read_addr, PKT_SIZE);
-                                if (err != GS_OK) {
-                                    log_error("Flash read failed at offset %" PRId32 ": %s", offset, gs_error_string(err));
-                                    continue;
-                                }
-                                uint16_t crc = crc16_ccitt(&temp_pkt, PKT_SIZE - sizeof(temp_pkt.crc16));
-                                if (crc != temp_pkt.crc16) {
-                                    log_error("Skipping invalid packet @ offset %" PRId32 " (CRC mismatch)", offset);
-                                    continue;
-                                }
-                                packets[valid_sample_count++] = temp_pkt;
+                        for (uint32_t i = 0; i < num_to_send; i++) {
+                            uint32_t packet_index = i;
+                            if (packet_index >= radfet_metadata.samples_saved) continue;
+
+                            int32_t offset = (int32_t)radfet_metadata.flash_write_offset
+                                        - ((radfet_metadata.samples_saved - packet_index) * PKT_SIZE);
+                            if (offset < 0) offset += RADFET_FLASH_SIZE - (RADFET_FLASH_SIZE % PKT_SIZE);
+
+                            void *read_addr = (uint8_t *)RADFET_FLASH_START + offset;
+                            radfet_packet_t pkt;  // read one packet at a time on the stack
+
+                            err = gs_mcu_flash_read_data(&pkt, read_addr, PKT_SIZE);
+                            if (err != GS_OK) {
+                                log_error("Flash read failed at offset %" PRId32 ": %s", offset, gs_error_string(err));
+                                continue;
                             }
-                            size_t bytes_to_send = valid_sample_count * PKT_SIZE;
-                            size_t bytes_sent = 0;
-                            err = gs_uart_write_buffer(USART1, 1000, (uint8_t *)packets, bytes_to_send, &bytes_sent);
-                            free(packets);
-                            if (err == GS_OK && bytes_sent == bytes_to_send) {
-                                if (bytes_sent > 0){
-                                    log_info("Sent chunk %d: %u samples (%u bytes)", 
-                                    chunk / CHUNK_SIZE, (unsigned int)valid_sample_count, (unsigned int)bytes_sent);
+
+                            uint16_t crc = crc16_ccitt(&pkt, PKT_SIZE - sizeof(pkt.crc16));
+                            if (crc != pkt.crc16) {
+                                log_error("Skipping invalid packet @ offset %" PRId32 " (CRC mismatch)", offset);
+                                continue;
+                            }
+
+                            valid_sample_count++;
+                            total_bytes_planned += PKT_SIZE;
+
+                            // Append this packet into the 64-byte buffer; flush when full
+                            const uint8_t *p = (const uint8_t *)&pkt;
+                            size_t remaining = PKT_SIZE;
+
+                            while (remaining > 0) {
+                                wdt_clear();
+
+                                size_t space   = BLOCK_SIZE - buf_used;
+                                size_t to_copy = (remaining < space) ? remaining : space;
+
+                                memcpy(txbuf + buf_used, p, to_copy);
+                                buf_used  += to_copy;
+                                p         += to_copy;
+                                remaining -= to_copy;
+
+                                if (buf_used == BLOCK_SIZE) {
+                                    size_t block_sent = 0;
+                                    err = gs_uart_write_buffer(USART1, 1000, txbuf, BLOCK_SIZE, &block_sent);
+                                    if (err != GS_OK || block_sent == 0) {
+                                        log_error("UART write error at %u/%u planned bytes: %s (sent %u of 64)",
+                                                (unsigned int)total_bytes_sent, (unsigned int)total_bytes_planned,
+                                                gs_error_string(err), (unsigned int)block_sent);
+                                        goto TX_FINISH; // abort transmit loop, finalize below
+                                    }
+                                    total_bytes_sent += block_sent;
+
+                                    if (block_sent < BLOCK_SIZE) {
+                                        // shift any unsent tail down (rare)
+                                        memmove(txbuf, txbuf + block_sent, BLOCK_SIZE - block_sent);
+                                        buf_used = BLOCK_SIZE - block_sent;
+                                    } else {
+                                        buf_used = 0;
+                                    }
                                 }
-                            } else {
-                                log_error("Failed to send chunk %d: error %s, sent %u of %u bytes",
-                                    chunk / CHUNK_SIZE, gs_error_string(err), (unsigned int)bytes_sent, (unsigned int)bytes_to_send);
-                                break;
                             }
                         }
+
+                        // Flush any tail (<64 bytes) after all packets
+                        if (buf_used > 0) {
+                            size_t block_sent = 0;
+                            err = gs_uart_write_buffer(USART1, 1000, txbuf, buf_used, &block_sent);
+                            if (err != GS_OK || block_sent == 0) {
+                                log_error("UART tail flush error: %s (wanted %u, sent %u)",
+                                        gs_error_string(err), (unsigned int)buf_used, (unsigned int)block_sent);
+                                goto TX_FINISH;
+                            }
+                            total_bytes_sent += block_sent;
+
+                            if (block_sent < buf_used) {
+                                // shift remainder (very unlikely on a stable link)
+                                memmove(txbuf, txbuf + block_sent, buf_used - block_sent);
+                            }
+                            buf_used = (block_sent < buf_used) ? (buf_used - block_sent) : 0;
+                        }
+
+                        err = GS_OK;
+
+                        TX_FINISH:
+                        if (err == GS_OK && total_bytes_sent == total_bytes_planned) {
+                            log_info("Downlink complete: %d valid samples, %u bytes sent in 64-byte blocks",
+                                    valid_sample_count, (unsigned int)total_bytes_sent);
+                        } else {
+                            log_error("Downlink incomplete: sent %u of %u bytes (%d valid samples)",
+                                    (unsigned int)total_bytes_sent, (unsigned int)total_bytes_planned, valid_sample_count);
+                        }
+
+
                         uint32_t total_elapsed = gs_time_diff_ms(start_time, gs_time_rel_ms());
-                        log_info("Downlink completed in %u ms", (unsigned int)total_elapsed);
-                    }
+                        log_info("Transmission took %u ms", (unsigned int)total_elapsed);
+                    // }
                     break;
+
                 case ETX:
                     log_info("Data transmission successful!");
                     //save amount of successful transmissions to metadata?

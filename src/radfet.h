@@ -37,10 +37,13 @@
 #define PKT_SIZE sizeof(radfet_packet_t)    
 #define METADATA_PKT_SIZE sizeof(radfet_metadata_t)
 
+//0x80000000 to 0x8002f798 is used for firmware code (from nanomind-bsp.map)
 #define RADFET_FLASH_START ((void *) 0x80040000) 
 #define RADFET_FLASH_END   ((void *) 0x80080000)
 #define RADFET_FLASH_SIZE  ((uintptr_t)RADFET_FLASH_END - (uintptr_t)RADFET_FLASH_START)
 #define RADFET_METADATA_ADDR ((void *) (0x80080000 + AVR32_FLASH_PAGE_SIZE)) 
+
+extern bool radfet_polling;
 
 typedef struct __attribute__((packed)) {
     uint32_t flash_write_offset;  //address to save and read from
