@@ -30,6 +30,7 @@ static const uint8_t radfet_channels[NUM_RADFET] = {
     4,  // D4 → AD4
     0   // D5 → AD0
 }; 
+
 bool radfet_polling = true;
 radfet_metadata_t radfet_metadata = {
     .flash_write_offset = 0,
@@ -118,7 +119,7 @@ gs_error_t tca9539_config(void) {
 gs_error_t radfet_read_all(radfet_sample_t *sample, int r){
     int16_t all_adc_values[GS_A3200_ADC_NCHANS] = {0};
     gs_error_t err = gs_a3200_adc_channels_sample(all_adc_values); //take a sample of all adc channels
-    uint32_t rel_ms = gs_time_rel_ms();
+    // uint32_t rel_ms = gs_time_rel_ms();
     if (err != GS_OK) {
         log_error("ADC bulk sample failed: %s", gs_error_string(err));
         return err;
@@ -130,7 +131,8 @@ gs_error_t radfet_read_all(radfet_sample_t *sample, int r){
         ch = radfet_channels[i]; //get adc channel from corresponding radfet
         raw = all_adc_values[ch]; //get adc value from adc channel
         sample->adc[i][r] = raw;
-        log_info("ADC[%i] Dosimeter %i R%i: ADC = %d  @%" PRIu32, ch, i+1, r+1, raw, rel_ms);
+        // log_info("ADC[%i] Dosimeter %i R%i: ADC = %d  @%" PRIu32, ch, i+1, r+1, raw, rel_ms);
+        log_info("ADC[%i] Dosimeter %i R%i: ADC = %d", ch, i+1, r+1, raw);
     }
     return err;
 }
@@ -297,14 +299,13 @@ static void * radfet_poll_task(void * param)
     } else {
         log_info("Metadata successfully loaded in polling task");
     }
-     
-    
+
     for (;;) {
         // Touch watchdog to prevent reset.
         // This should be tied into other tasks as well, to ensure everything is running.
         wdt_clear();
-        radfet_polling = true;
-        pkt.sample.timestamp = gs_time_rel_ms();
+        // radfet_polling = true;
+        // pkt.sample.timestamp = gs_time_rel_ms();
         log_info("=== RADFET Sample ==="); 
         for (int r= 0; r < RADFET_PER_MODULE; r++){
             // enable all sensors and all R
@@ -331,17 +332,19 @@ static void * radfet_poll_task(void * param)
 
         void *target_addr = (uint8_t *)RADFET_FLASH_START + radfet_metadata.flash_write_offset;
 
-        log_info("Writing to internal flash: timestamp = %" PRIu32, pkt.sample.timestamp);
+        // log_info("Writing to internal flash: timestamp = %" PRIu32, pkt.sample.timestamp);
         for (int i = 0; i < NUM_RADFET; i++) {
-            log_info("  D%i R1 = %d mV, R2 = %d mV", i + 1, pkt.sample.adc[i][0], pkt.sample.adc[i][1]);
+            log_info("  D%i R1 = %d mV, R2 = %d", i + 1, pkt.sample.adc[i][0], pkt.sample.adc[i][1]);
         }
         pkt.crc16 = crc16_ccitt(&pkt, sizeof(pkt) - sizeof(pkt.crc16));
         err = gs_mcu_flash_write_data(target_addr, &pkt, sizeof(pkt));
         if (err != GS_OK) {
             log_error("Failed to write to internal flash: %s", gs_error_string(err));
         } else {
-            log_info("Sample written to internal flash @ offset %" PRIu32 " (timestamp = %" PRIu32 ")",
-                    radfet_metadata.flash_write_offset, pkt.sample.timestamp);
+            // log_info("Sample written to internal flash @ offset %" PRIu32 " (timestamp = %" PRIu32 ")",
+            //         radfet_metadata.flash_write_offset, pkt.sample.timestamp);
+            log_info("Sample written to internal flash @ offset %" PRIu32 ,
+                    radfet_metadata.flash_write_offset);
             radfet_metadata.flash_write_offset += PKT_SIZE;
             radfet_metadata.samples_saved++;
             err = radfet_save_metadata();
@@ -352,7 +355,7 @@ static void * radfet_poll_task(void * param)
            
         log_info("==============================");
         //Delay the task by sample rate
-        radfet_polling = false;
+        // radfet_polling = false;
         gs_time_sleep_ms(radfet_metadata.sample_rate_ms);
     }
     // Will never get here
@@ -361,6 +364,7 @@ static void * radfet_poll_task(void * param)
 
 void radfet_task_init(void)
 {
+    log_info("Initializing Radfet Polling Task");
     // test_internal_flash_rw();
     // peek 0x80040000 52 
     // peek 0x80080200 14

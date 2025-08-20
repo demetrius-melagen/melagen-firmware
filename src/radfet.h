@@ -55,12 +55,12 @@ typedef struct __attribute__((packed)) {
 extern radfet_metadata_t radfet_metadata;
 
 typedef struct __attribute__((packed)) {
-    uint32_t timestamp;   // 4 bytes
+    // uint32_t timestamp;   // 4 bytes
     int16_t adc[NUM_RADFET][RADFET_PER_MODULE];  // 2 x 5 x 2 = 20 bytes
 } radfet_sample_t; // Total: 24 bytes
 
 typedef struct __attribute__((packed)) {
-    radfet_sample_t sample;  // 24 bytes (timestamp + adc_mv)
+    radfet_sample_t sample;  // 24 bytes (timestamp + adc_mv) // 20 bytes
     uint16_t crc16;          // 2 bytes, CRC over all prior bytes
 } radfet_packet_t;
 
