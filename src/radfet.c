@@ -31,7 +31,7 @@ static const uint8_t radfet_channels[NUM_RADFET] = {
     0   // D5 → AD0
 }; 
 
-bool radfet_polling = true;
+// bool radfet_polling = true;
 radfet_metadata_t radfet_metadata = {
     .flash_write_offset = 0,
     .samples_saved = 0,
@@ -214,9 +214,7 @@ static uint16_t calc_metadata_crc(const radfet_metadata_t *meta) {
 
 // Helper function to load metadata 
 bool radfet_load_metadata(void) {
-
     radfet_metadata_t meta = radfet_metadata; 
-
     const void *addr = (void *)RADFET_METADATA_ADDR;
     log_info("Reading metadata from address: 0x%08lx", (uint32_t)addr);
 
@@ -290,6 +288,7 @@ static void * radfet_poll_task(void * param)
     if (!radfet_load_metadata()) {
         log_info("Metadata invalid or not found — initializing defaults");
         radfet_metadata.flash_write_offset = 0;
+        // radfet_metadata.flash_write_offset = (RADFET_FLASH_SIZE - PKT_SIZE * 2) - ((RADFET_FLASH_SIZE - PKT_SIZE * 2) % PKT_SIZE); // rollover test
         radfet_metadata.samples_saved = 0;
         radfet_metadata.sample_rate_ms = 60000;
         err = radfet_save_metadata();
@@ -305,6 +304,7 @@ static void * radfet_poll_task(void * param)
         // This should be tied into other tasks as well, to ensure everything is running.
         wdt_clear();
         // radfet_polling = true;
+        pkt.sample.index = radfet_metadata.samples_saved;
         // pkt.sample.timestamp = gs_time_rel_ms();
         log_info("=== RADFET Sample ==="); 
         for (int r= 0; r < RADFET_PER_MODULE; r++){
@@ -343,8 +343,9 @@ static void * radfet_poll_task(void * param)
         } else {
             // log_info("Sample written to internal flash @ offset %" PRIu32 " (timestamp = %" PRIu32 ")",
             //         radfet_metadata.flash_write_offset, pkt.sample.timestamp);
-            log_info("Sample written to internal flash @ offset %" PRIu32 ,
-                    radfet_metadata.flash_write_offset);
+            log_info("Sample %" PRIu32 " written to internal flash @ offset %" PRIu32,
+                pkt.sample.index,
+                radfet_metadata.flash_write_offset);
             radfet_metadata.flash_write_offset += PKT_SIZE;
             radfet_metadata.samples_saved++;
             err = radfet_save_metadata();
@@ -356,7 +357,7 @@ static void * radfet_poll_task(void * param)
         log_info("==============================");
         //Delay the task by sample rate
         // radfet_polling = false;
-        gs_time_sleep_ms(radfet_metadata.sample_rate_ms);
+        gs_time_sleep_ms(radfet_metadata.sample_rate_ms); 
     }
     // Will never get here
     gs_thread_exit(NULL);
@@ -366,8 +367,10 @@ void radfet_task_init(void)
 {
     log_info("Initializing Radfet Polling Task");
     // test_internal_flash_rw();
+    // quick gosh commands to copy/paste
     // peek 0x80040000 52 
     // peek 0x80080200 14
+    // reset
 
     // initialize i2c to i/o converter, set output ports to 0 and set ports to output mode
     if (tca9539_config() != GS_OK){

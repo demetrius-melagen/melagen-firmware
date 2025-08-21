@@ -43,7 +43,7 @@
 #define RADFET_FLASH_SIZE  ((uintptr_t)RADFET_FLASH_END - (uintptr_t)RADFET_FLASH_START)
 #define RADFET_METADATA_ADDR ((void *) (0x80080000 + AVR32_FLASH_PAGE_SIZE)) 
 
-extern bool radfet_polling;
+// extern bool radfet_polling;
 
 typedef struct __attribute__((packed)) {
     uint32_t flash_write_offset;  //address to save and read from
@@ -56,17 +56,19 @@ extern radfet_metadata_t radfet_metadata;
 
 typedef struct __attribute__((packed)) {
     // uint32_t timestamp;   // 4 bytes
+    uint32_t index; // 4 bytes
     int16_t adc[NUM_RADFET][RADFET_PER_MODULE];  // 2 x 5 x 2 = 20 bytes
 } radfet_sample_t; // Total: 24 bytes
 
 typedef struct __attribute__((packed)) {
-    radfet_sample_t sample;  // 24 bytes (timestamp + adc_mv) // 20 bytes
+    radfet_sample_t sample;  // 24 bytes (index + adc_mv) // 20 bytes
     uint16_t crc16;          // 2 bytes, CRC over all prior bytes
 } radfet_packet_t;
 
 // Packet structure to save in internal flash:
 // one timestamp for each poll
 // [timestamp][D1R1][D1R2][D2R1][D2R2][D3R1][D3R2][D4R1][D4R2][D5R1][D5R2][CRC]
+// [index][D1R1][D1R2][D2R1][D2R2][D3R1][D3R2][D4R1][D4R2][D5R1][D5R2][CRC]
 
 uint16_t crc16_ccitt(const void *data, size_t length);
 

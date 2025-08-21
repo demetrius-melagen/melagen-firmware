@@ -28,7 +28,7 @@
 
 #define USART1 1
 #define STX 0x02
-#define ETX 0x03
+// #define ETX 0x03
 #define NUM_SAMPLES_TO_SEND 60 * 24 * 5
 #define BYTES_TO_SEND (NUM_SAMPLES_TO_SEND * PKT_SIZE)
 // OOX specified 64 bytes to send at a time based on stress testing their rs422 link
@@ -166,10 +166,10 @@ static void * task_mode_op(void * param)
                     // }
                     break;
 
-                case ETX:
-                    log_info("Data transmission successful!");
+                // case ETX:
+                    // log_info("Data transmission successful!");
                     //save amount of successful transmissions to metadata?
-                    break;
+                    // break;
             }
         } else if (err == GS_ERROR_TIMEOUT) {
         } else {
