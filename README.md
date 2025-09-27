@@ -11,7 +11,7 @@ This firmware interfaces with five Varadis VT01 RADFET sensors via an I2C-contro
 - Polls 5x RADFET dosimeters using external ADCs
 - I2C expander (TCA9539) used for sensor bias enable/disable
 - Periodic sampling with timestamped ADC measurements
-- FRAM circular buffer for non-volatile logging (`radfet_sample_t`)
+- Internal Flash Memory circular buffer for non-volatile logging (`radfet_sample_t`)
 - CSP interface for remote data dump and control
 - RS-422-compatible packet structure for satellite downlink
 - Watchdog integration for autonomous resets
