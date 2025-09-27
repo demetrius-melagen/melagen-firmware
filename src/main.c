@@ -137,7 +137,8 @@ static void hook_init_complete(void)
 
     extern void mode_op_init(void);
     mode_op_init();
-}//
+
+}
 
 /**
    Hooks to the A3200 system boot process.

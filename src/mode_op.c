@@ -36,7 +36,7 @@
 
 static void * task_mode_op(void * param)
 {
-
+    log_info("Operation Modes initialization complete");
     uint8_t incoming_byte;
     uint32_t num_to_send;
     gs_error_t err;
@@ -165,11 +165,6 @@ static void * task_mode_op(void * param)
                     log_info("Transmission took %u ms", (unsigned int)total_elapsed);
                     // }
                     break;
-
-                // case ETX:
-                    // log_info("Data transmission successful!");
-                    //save amount of successful transmissions to metadata?
-                    // break;
             }
         } else if (err == GS_ERROR_TIMEOUT) {
         } else {
@@ -182,6 +177,7 @@ static void * task_mode_op(void * param)
 
 void mode_op_init(void)
 {
+    log_info("Operation Modes initialization");
     gs_uart_config_t uart_conf;
     gs_uart_get_default_config(&uart_conf);
     uart_conf.comm.bps = 57600;

@@ -334,7 +334,7 @@ static void * radfet_poll_task(void * param)
 
         // log_info("Writing to internal flash: timestamp = %" PRIu32, pkt.sample.timestamp);
         for (int i = 0; i < NUM_RADFET; i++) {
-            log_info("  D%i R1 = %d mV, R2 = %d", i + 1, pkt.sample.adc[i][0], pkt.sample.adc[i][1]);
+            log_info("  D%i R1 = %d, R2 = %d", i + 1, pkt.sample.adc[i][0], pkt.sample.adc[i][1]);
         }
         pkt.crc16 = crc16_ccitt(&pkt, sizeof(pkt) - sizeof(pkt.crc16));
         err = gs_mcu_flash_write_data(target_addr, &pkt, sizeof(pkt));
