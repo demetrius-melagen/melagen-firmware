@@ -36,7 +36,7 @@ function BytesToAscii([byte[]]$bytes, [int]$count) {
 
 # ==== MAIN LOOP ====
 $buf = New-Object byte[] 4096
-$nextTx = (Get-Date).AddMinutes(1)
+$nextTx = (Get-Date).AddMinutes(10)
 
 try {
   while ($true) {
@@ -45,7 +45,7 @@ try {
       $sp.BaseStream.WriteByte(0x02)
       $sp.BaseStream.Flush()
       Write-Host ("[{0}] TX: STX (0x02)" -f (Get-Date).ToString("HH:mm:ss"))
-      $nextTx = (Get-Date).AddMinutes(1)
+      $nextTx = (Get-Date).AddMinutes(10)
     }
 
     # RX polling
